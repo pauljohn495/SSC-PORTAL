@@ -1,3 +1,5 @@
 frontend/.env
 /.env
-backend/.env 
+backend/.env
+frontend/.env:1
+frontend/.env:2
