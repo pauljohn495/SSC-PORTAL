@@ -1,11 +1,29 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 const StudentHandbook = () => {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [handbookPages, setHandbookPages] = useState([])
+  const [loading, setLoading] = useState(true)
   const { logout, user } = useAuth()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    fetchHandbook()
+  }, [])
+
+  const fetchHandbook = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/handbook')
+      const data = await response.json()
+      setHandbookPages(data)
+    } catch (error) {
+      console.error('Error fetching handbook:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -64,7 +82,27 @@ const StudentHandbook = () => {
 
       {/* Main Content */}
       <main className='p-8'>
-
+        <div className='max-w-4xl mx-auto'>
+          <h1 className='text-3xl font-bold text-center mb-8 text-blue-950'>STUDENT HANDBOOK</h1>
+          {loading ? (
+            <p>Loading...</p>
+          ) : (
+            <div className='space-y-6'>
+              {handbookPages.length > 0 ? (
+                handbookPages.map((page) => (
+                  <div key={page._id} className='bg-gray-100 p-6 rounded-lg shadow-md'>
+                    <h2 className='text-2xl font-semibold text-gray-800 mb-4'>{page.title}</h2>
+                    <div className='prose max-w-none'>
+                      <pre className='whitespace-pre-wrap text-gray-700 leading-relaxed'>{page.content}</pre>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className='text-center text-gray-500'>No handbook content available yet.</p>
+              )}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   )

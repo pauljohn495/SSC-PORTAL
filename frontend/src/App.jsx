@@ -9,6 +9,11 @@ import ResetPassword from './components/ResetPassword'
 import Memorandum from './components/Memorandum'
 import StudentHandbook from './components/StudentHandbook'
 import AdminDashboard from './components/AdminDashboard'
+import AdminHandbook from './components/AdminHandbook'
+import AdminMemorandum from './components/AdminMemorandum'
+import AddPresident from './components/AddPresident'
+import AddAdmin from './components/AddAdmin'
+import ManageUsers from './components/ManageUsers'
 
 function App() {
   return (
@@ -20,7 +25,11 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/memorandum" element={<Memorandum />} />
           <Route path="/student-handbook" element={<StudentHandbook />} />
-          <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/admin-dashboard" element={<AdminHandbook />} />
+          <Route path="/admin-handbook" element={<AdminHandbook />} />
+          <Route path="/admin-memorandum" element={<AdminMemorandum />} />
+
+          <Route path="/manage-users" element={<ManageUsers />} />
         </Routes>
       </Router>
     </AuthProvider>

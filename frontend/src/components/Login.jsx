@@ -57,6 +57,8 @@ const handleLoginsuccess = async (credentialResponse) => {
 const handleAdminLogin = async (e) => {
   e.preventDefault();
 
+  console.log('Frontend: Attempting admin login with:', { username, password: '***', recaptchaToken: recaptchaToken ? 'present' : 'missing' });
+
   if (!recaptchaToken) {
     alert('Please complete the reCAPTCHA');
     return;
@@ -70,6 +72,7 @@ const handleAdminLogin = async (e) => {
 
   const data = await response.json();
   console.log('Admin login response: ', data);
+  console.log('Response status:', response.status);
 
   if (!response.ok) {
     alert(data.message || 'Admin login failed');
