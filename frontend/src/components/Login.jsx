@@ -109,7 +109,7 @@ const handleForgotPassword = async (e) => {
            `url(${bgimage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
         <div className='absolute inset-0 bg-black/50'></div>
 
-<div className="card bg-white  w-130 *: shadow-sm justify-center items-center">
+<div className="card bg-white w-full max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl shadow-sm justify-center items-center">
   <figure className="px-10 pt-10">
     <img
       src={buksunew}
@@ -128,7 +128,7 @@ const handleForgotPassword = async (e) => {
     />
 
 
-    <form onSubmit={handleAdminLogin} className="w-full max-w-xs">
+    <form onSubmit={handleAdminLogin} className="w-full max-w-xs md:max-w-sm">
       <div className="form-control">
         <label className="label">
           <span className="label-text">Username</span>
