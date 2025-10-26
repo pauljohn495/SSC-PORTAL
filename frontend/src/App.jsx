@@ -14,6 +14,7 @@ import AdminMemorandum from './components/AdminMemorandum'
 import AddPresident from './components/AddPresident'
 import AddAdmin from './components/AddAdmin'
 import ManageUsers from './components/ManageUsers'
+import ActivityLogs from './components/ActivityLogs'
 
 function App() {
   return (
@@ -25,11 +26,11 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/memorandum" element={<Memorandum />} />
           <Route path="/student-handbook" element={<StudentHandbook />} />
-          <Route path="/admin-dashboard" element={<AdminHandbook />} />
+          <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/admin-handbook" element={<AdminHandbook />} />
           <Route path="/admin-memorandum" element={<AdminMemorandum />} />
-
           <Route path="/manage-users" element={<ManageUsers />} />
+          <Route path="/activity-logs" element={<ActivityLogs />} />
         </Routes>
       </Router>
     </AuthProvider>

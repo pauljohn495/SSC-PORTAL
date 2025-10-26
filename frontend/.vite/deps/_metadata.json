@@ -2,7 +2,54 @@
   "hash": "ca2c2fdd",
   "configHash": "8dbe7df8",
   "lockfileHash": "4bf6dc23",
-  "browserHash": "fc5138aa",
-  "optimized": {},
-  "chunks": {}
+  "browserHash": "299d6f62",
+  "optimized": {
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "1f2a9e9a",
+      "needsInterop": true
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "9589660f",
+      "needsInterop": true
+    },
+    "@react-oauth/google": {
+      "src": "../../node_modules/@react-oauth/google/dist/index.esm.js",
+      "file": "@react-oauth_google.js",
+      "fileHash": "5d4d2401",
+      "needsInterop": false
+    },
+    "react-router-dom": {
+      "src": "../../node_modules/react-router-dom/dist/index.mjs",
+      "file": "react-router-dom.js",
+      "fileHash": "81cb50c1",
+      "needsInterop": false
+    },
+    "jwt-decode": {
+      "src": "../../node_modules/jwt-decode/build/esm/index.js",
+      "file": "jwt-decode.js",
+      "fileHash": "8c6ff338",
+      "needsInterop": false
+    },
+    "react-google-recaptcha": {
+      "src": "../../node_modules/react-google-recaptcha/lib/esm/index.js",
+      "file": "react-google-recaptcha.js",
+      "fileHash": "9ece754a",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-IIT576ZH": {
+      "file": "chunk-IIT576ZH.js"
+    },
+    "chunk-3VDXVL42": {
+      "file": "chunk-3VDXVL42.js"
+    },
+    "chunk-5WRI5ZAA": {
+      "file": "chunk-5WRI5ZAA.js"
+    }
+  }
 }
