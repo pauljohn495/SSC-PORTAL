@@ -41,7 +41,7 @@ const ManageUsers = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate('/login');
   };
 
   const handleAddPresident = async (e) => {

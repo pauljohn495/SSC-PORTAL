@@ -60,7 +60,7 @@ const AdminHandbook = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/');
+    navigate('/login');
   };
 
   return (
