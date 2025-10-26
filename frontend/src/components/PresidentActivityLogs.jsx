@@ -41,6 +41,19 @@ const PresidentActivityLogs = () => {
     return new Date(dateString).toLocaleString();
   };
 
+  const getTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
+    return `${Math.floor(diffInSeconds / 31536000)} years ago`;
+  };
+
   const getActionColor = (action) => {
     switch (action) {
       case 'login':
@@ -97,43 +110,43 @@ const PresidentActivityLogs = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className='text-3xl font-bold mb-8 text-blue-950'>My Activity Logs</h1>
+          <h1 className='text-3xl font-bold mb-8 text-blue-950'>Activity Logs</h1>
 
-          {/* Logs Display */}
           {loading ? (
             <div className='text-center py-8'>
               <p className='text-gray-500'>Loading activity logs...</p>
             </div>
           ) : (
-            <div className='space-y-4'>
+            <div className='bg-white rounded-lg shadow-md'>
               {logs.length > 0 ? (
-                logs.map((log) => (
-                  <div key={log._id} className='bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow'>
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1'>
-                        <div className='flex items-center space-x-3 mb-2'>
-                          <span className='text-2xl'>{getActionIcon(log.action)}</span>
-                          <h3 className={`text-lg font-semibold ${getActionColor(log.action)}`}>
-                            {log.action.charAt(0).toUpperCase() + log.action.slice(1).replace('_', ' ')}
-                          </h3>
+                <div>
+                  {logs.map((log, index) => {
+                    const timeAgo = getTimeAgo(log.timestamp);
+                    const formattedDate = formatDate(log.timestamp);
+                    
+                    return (
+                      <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-6 py-4'>
+                          <p className='text-gray-800 font-medium'>
+                            {log.action.charAt(0).toUpperCase() + log.action.slice(1).replace('_', ' ')} - {log.description}
+                          </p>
                         </div>
-                        <p className='text-gray-700 mb-2'>{log.description}</p>
-                        <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
-                          <span><strong>Date:</strong> {formatDate(log.timestamp)}</span>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-48 px-6 py-4 text-sm text-gray-600'>{formattedDate}</div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>None</div>
+                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
+                          <button className='text-blue-600 hover:text-blue-800 transition-colors'>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          </button>
                         </div>
-                        {log.details && (
-                          <div className='mt-3 p-3 bg-gray-50 rounded'>
-                            <p className='text-sm text-gray-600'><strong>Details:</strong> {log.details}</p>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className='text-center py-8'>
-                  <p className='text-gray-500'>No activity logs found for the selected filter.</p>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div className='text-center py-12 text-gray-500'>No activity logs found.</div>
               )}
             </div>
           )}
