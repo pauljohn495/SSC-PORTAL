@@ -395,8 +395,8 @@ app.post('/api/admin/add-president', async (req, res) => {
     console.log('Creating new president user...');
     const newPresident = new User({
       email,
-      role: 'president'
-      // Don't include googleId - let it be undefined/null
+      role: 'president',
+      googleId: undefined  // Explicitly set to undefined to avoid null conflict
     });
     
     console.log('Saving user to database...');
@@ -421,7 +421,7 @@ app.post('/api/admin/add-president', async (req, res) => {
   }
 });
 
-// Cleanup duplicate googleId entries (admin only) - TEMPORARY DEBUG ENDPOINT
+// Cleanup duplicate googleId entries and fix index (admin only)
 app.post('/api/admin/cleanup-duplicates', async (req, res) => {
   try {
     console.log('Cleaning up duplicate googleId entries...');

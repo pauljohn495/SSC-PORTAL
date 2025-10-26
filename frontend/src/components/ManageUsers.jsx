@@ -126,22 +126,22 @@ const ManageUsers = () => {
     }
   };
 
-  const handleClearAllPresidents = async () => {
-    if (!window.confirm('Are you sure you want to delete ALL presidents? This cannot be undone!')) {
-      return;
-    }
+  const handleCleanupDatabase = async () => {
     try {
-      const presidents = users.filter(user => user.role === 'president');
-      for (const president of presidents) {
-        await fetch(`http://localhost:5001/api/admin/users/${president._id}`, {
-          method: 'DELETE'
-        });
+      const response = await fetch('http://localhost:5001/api/admin/cleanup-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setMessage('Database cleanup completed successfully');
+      } else {
+        setErrorMessage(data.message || 'Error during cleanup');
       }
-      setMessage('All presidents deleted successfully');
-      fetchUsers(); // Refresh the list
     } catch (error) {
-      console.error('Error clearing presidents:', error);
-      setErrorMessage('Error clearing presidents');
+      console.error('Error during cleanup:', error);
+      setErrorMessage('Network error during cleanup');
     }
   };
 
@@ -198,7 +198,6 @@ const ManageUsers = () => {
                         setErrorMessage('');
                       }}
                       className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900'
-                      placeholder='any@email.com'
                       required
                     />
                   </div>
@@ -293,17 +292,7 @@ const ManageUsers = () => {
             <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
               {/* Presidents Section */}
               <div>
-                <div className='flex justify-between items-center mb-4'>
-                  <h2 className='text-2xl font-bold text-blue-950'>Presidents</h2>
-                  {users.filter(user => user.role === 'president').length > 0 && (
-                    <button
-                      onClick={handleClearAllPresidents}
-                      className='bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition-colors'
-                    >
-                      Clear All Presidents
-                    </button>
-                  )}
-                </div>
+                <h2 className='text-2xl font-bold mb-4 text-blue-950'>Presidents</h2>
                 <div className='grid grid-cols-1 gap-6'>
                   {users.filter(user => user.role === 'president').length > 0 ? (
                     users.filter(user => user.role === 'president').map((user) => (
@@ -317,13 +306,8 @@ const ManageUsers = () => {
                             <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
                           </svg>
                         </button>
-                        <h3 className='text-xl font-semibold text-gray-800 mb-2'>
-                          {user.name || 'No Name Set'}
-                        </h3>
                         <p className='text-sm text-gray-600 mb-2'>Email: {user.email}</p>
                         <p className='text-sm text-gray-600 mb-2'>Role: {user.role}</p>
-                        <p className='text-sm text-gray-600'>Username: {user.username || 'N/A'}</p>
-                        <p className='text-sm text-gray-600'>Google ID: {user.googleId || 'N/A'}</p>
                       </div>
                     ))
                   ) : (
