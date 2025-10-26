@@ -6,13 +6,13 @@ const ManageUsers = () => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
-  const [presidentEmails, setPresidentEmails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddPresident, setShowAddPresident] = useState(false);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [presidentEmail, setPresidentEmail] = useState('');
   const [adminForm, setAdminForm] = useState({ username: '', password: '', name: '', email: '' });
   const [message, setMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (user && user.role === 'admin') {
@@ -46,6 +46,15 @@ const ManageUsers = () => {
 
   const handleAddPresident = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+    setMessage('');
+    
+    // Basic email validation
+    if (!presidentEmail || !presidentEmail.includes('@')) {
+      setErrorMessage('Please enter a valid email address');
+      return;
+    }
+    
     try {
       const response = await fetch('http://localhost:5001/api/admin/add-president', {
         method: 'POST',
@@ -53,23 +62,28 @@ const ManageUsers = () => {
         body: JSON.stringify({ email: presidentEmail })
       });
       const data = await response.json();
-      setMessage(data.message);
+      
       if (response.ok) {
-        if (data.user) {
-          setUsers([...users, data.user]); // Add the new president to the list immediately
-        }
-        setPresidentEmails([...presidentEmails, presidentEmail]);
+        setMessage(data.message);
         setPresidentEmail('');
         setShowAddPresident(false);
-        fetchUsers(); // Refresh the list to ensure consistency
+        fetchUsers(); // Refresh the list to show the new president
+      } else {
+        console.log('Error response:', response.status, data);
+        const errorMsg = data.details ? `${data.message}: ${data.details}` : data.message;
+        setErrorMessage(errorMsg || 'Error adding president email');
       }
     } catch (error) {
-      setMessage('Error adding president email');
+      console.error('Error adding president:', error);
+      setErrorMessage('Network error. Please try again.');
     }
   };
 
   const handleAddAdmin = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+    setMessage('');
+    
     try {
       const response = await fetch('http://localhost:5001/api/admin/add-admin', {
         method: 'POST',
@@ -77,17 +91,18 @@ const ManageUsers = () => {
         body: JSON.stringify(adminForm)
       });
       const data = await response.json();
-      setMessage(data.message);
+      
       if (response.ok) {
-        if (data.user) {
-          setUsers([...users, data.user]); // Add the new admin to the list immediately
-        }
+        setMessage(data.message);
         setAdminForm({ username: '', password: '', name: '', email: '' });
         setShowAddAdmin(false);
-        fetchUsers(); // Refresh the list to ensure consistency
+        fetchUsers(); // Refresh the list to show the new admin
+      } else {
+        setErrorMessage(data.message || 'Error creating admin account');
       }
     } catch (error) {
-      setMessage('Error creating admin account');
+      console.error('Error creating admin:', error);
+      setErrorMessage('Network error. Please try again.');
     }
   };
 
@@ -110,6 +125,26 @@ const ManageUsers = () => {
       setMessage('Error deleting user');
     }
   };
+
+  const handleClearAllPresidents = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL presidents? This cannot be undone!')) {
+      return;
+    }
+    try {
+      const presidents = users.filter(user => user.role === 'president');
+      for (const president of presidents) {
+        await fetch(`http://localhost:5001/api/admin/users/${president._id}`, {
+          method: 'DELETE'
+        });
+      }
+      setMessage('All presidents deleted successfully');
+      fetchUsers(); // Refresh the list
+    } catch (error) {
+      console.error('Error clearing presidents:', error);
+      setErrorMessage('Error clearing presidents');
+    }
+  };
+
 
   return (
     <div className='bg-white min-h-screen flex'>
@@ -144,7 +179,7 @@ const ManageUsers = () => {
             {/* Add President Section */}
             <div className='bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow'>
               <h2 className='text-xl font-semibold mb-4 text-gray-800'>Add President Email</h2>
-              <p className='text-sm text-gray-600 mb-4'>Add an email address that will be recognized as a president account when they log in.</p>
+              <p className='text-sm text-gray-600 mb-4'>Add any email address that will be recognized as a president account. The user will be able to login with Google using this email.</p>
               <button
                 onClick={() => setShowAddPresident(!showAddPresident)}
                 className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors'
@@ -158,9 +193,12 @@ const ManageUsers = () => {
                     <input
                       type='email'
                       value={presidentEmail}
-                      onChange={(e) => setPresidentEmail(e.target.value)}
+                      onChange={(e) => {
+                        setPresidentEmail(e.target.value);
+                        setErrorMessage('');
+                      }}
                       className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900'
-                      placeholder='president@example.com'
+                      placeholder='any@email.com'
                       required
                     />
                   </div>
@@ -243,40 +281,52 @@ const ManageUsers = () => {
             </div>
           )}
 
+          {errorMessage && (
+            <div className='mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded'>
+              {errorMessage}
+            </div>
+          )}
+
           {loading ? (
             <p>Loading...</p>
           ) : (
             <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
               {/* Presidents Section */}
               <div>
-                <h2 className='text-2xl font-bold mb-4 text-blue-950'>Presidents</h2>
+                <div className='flex justify-between items-center mb-4'>
+                  <h2 className='text-2xl font-bold text-blue-950'>Presidents</h2>
+                  {users.filter(user => user.role === 'president').length > 0 && (
+                    <button
+                      onClick={handleClearAllPresidents}
+                      className='bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition-colors'
+                    >
+                      Clear All Presidents
+                    </button>
+                  )}
+                </div>
                 <div className='grid grid-cols-1 gap-6'>
-                  {presidentEmails.length > 0 && presidentEmails.map((email, index) => (
-                    <div key={index} className='bg-white p-6 rounded-lg shadow-md'>
-                      <h3 className='text-xl font-semibold text-gray-800 mb-2'>President Email</h3>
-                      <p className='text-sm text-gray-600 mb-2'>Email: {email}</p>
-                      <p className='text-sm text-gray-600 mb-2'>Role: president</p>
-                      <p className='text-sm text-gray-600'>Username: N/A</p>
-                    </div>
-                  ))}
-                  {users.filter(user => user.role === 'president').length > 0 && users.filter(user => user.role === 'president').map((user) => (
-                    <div key={user._id} className='bg-white p-6 rounded-lg shadow-md relative'>
-                      <button
-                        onClick={() => handleDeleteUser(user._id)}
-                        className='absolute top-2 right-2 text-red-500 hover:text-red-700 transition-colors'
-                        title='Delete user'
-                      >
-                        <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
-                        </svg>
-                      </button>
-                      <h3 className='text-xl font-semibold text-gray-800 mb-2'>{user.name}</h3>
-                      <p className='text-sm text-gray-600 mb-2'>Email: {user.email}</p>
-                      <p className='text-sm text-gray-600 mb-2'>Role: {user.role}</p>
-                      <p className='text-sm text-gray-600'>Username: {user.username || 'N/A'}</p>
-                    </div>
-                  ))}
-                  {presidentEmails.length === 0 && users.filter(user => user.role === 'president').length === 0 && (
+                  {users.filter(user => user.role === 'president').length > 0 ? (
+                    users.filter(user => user.role === 'president').map((user) => (
+                      <div key={user._id} className='bg-white p-6 rounded-lg shadow-md relative'>
+                        <button
+                          onClick={() => handleDeleteUser(user._id)}
+                          className='absolute top-2 right-2 text-red-500 hover:text-red-700 transition-colors'
+                          title='Delete user'
+                        >
+                          <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
+                          </svg>
+                        </button>
+                        <h3 className='text-xl font-semibold text-gray-800 mb-2'>
+                          {user.name || 'No Name Set'}
+                        </h3>
+                        <p className='text-sm text-gray-600 mb-2'>Email: {user.email}</p>
+                        <p className='text-sm text-gray-600 mb-2'>Role: {user.role}</p>
+                        <p className='text-sm text-gray-600'>Username: {user.username || 'N/A'}</p>
+                        <p className='text-sm text-gray-600'>Google ID: {user.googleId || 'N/A'}</p>
+                      </div>
+                    ))
+                  ) : (
                     <p className='text-center text-gray-500'>No presidents available.</p>
                   )}
                 </div>

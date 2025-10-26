@@ -319,36 +319,223 @@ app.post('/api/handbook', async (req, res) => {
   }
 });
 
+// Test endpoint to verify the fix is working
+app.get('/api/admin/test-fix', async (req, res) => {
+  try {
+    const testEmail = '2301102187@student.buksu.edu.ph';
+    console.log('Testing fix for email:', testEmail);
+    
+    const existingUser = await User.findOne({ email: testEmail });
+    if (existingUser) {
+      res.status(200).json({ 
+        message: 'Fix is working - user found', 
+        user: {
+          email: existingUser.email,
+          role: existingUser.role,
+          name: existingUser.name
+        }
+      });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('Test error:', error);
+    res.status(500).json({ message: 'Server error', details: error.message });
+  }
+});
+
 // Add president email (admin only)
 app.post('/api/admin/add-president', async (req, res) => {
   try {
     const { email } = req.body;
+    console.log('Add president request:', { email });
 
     if (!email || !email.includes('@')) {
       return res.status(400).json({ message: 'Valid email required' });
     }
 
     // Check if email already exists in database
+    console.log('Checking for existing user with email:', email);
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' });
+      console.log('User already exists:', {
+        _id: existingUser._id,
+        email: existingUser.email,
+        role: existingUser.role,
+        googleId: existingUser.googleId,
+        name: existingUser.name
+      });
+      
+      // If user exists and is already a president, return success
+      if (existingUser.role === 'president') {
+        return res.status(200).json({ 
+          message: 'User is already a president', 
+          user: existingUser 
+        });
+      }
+      
+      // If user exists but is not a president, update their role
+      console.log(`Updating existing user ${email} from ${existingUser.role} to president`);
+      existingUser.role = 'president';
+      await existingUser.save();
+      
+      // Add to presidentEmails array if not already there
+      if (!presidentEmails.includes(email)) {
+        presidentEmails.push(email);
+        console.log('Added to presidentEmails array:', email);
+      }
+      
+      return res.status(200).json({ 
+        message: `User role updated from ${existingUser.role} to president`, 
+        user: existingUser 
+      });
     }
 
     // Create new president user in database
+    console.log('Creating new president user...');
     const newPresident = new User({
       email,
       role: 'president'
+      // Don't include googleId - let it be undefined/null
     });
+    
+    console.log('Saving user to database...');
     await newPresident.save();
+    console.log('User saved successfully:', newPresident);
 
     if (!presidentEmails.includes(email)) {
       presidentEmails.push(email);
+      console.log('Added to presidentEmails array:', email);
     }
 
     res.status(200).json({ message: 'President email added successfully', user: newPresident });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error in add-president endpoint:', error);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack
+    });
+    res.status(500).json({ message: 'Server error', details: error.message });
+  }
+});
+
+// Cleanup duplicate googleId entries (admin only) - TEMPORARY DEBUG ENDPOINT
+app.post('/api/admin/cleanup-duplicates', async (req, res) => {
+  try {
+    console.log('Cleaning up duplicate googleId entries...');
+    
+    // Drop the problematic googleId index
+    try {
+      await User.collection.dropIndex('googleId_1');
+      console.log('Dropped googleId_1 index');
+    } catch (indexError) {
+      console.log('Index might not exist or already dropped:', indexError.message);
+    }
+    
+    // Find all users with null googleId
+    const usersWithNullGoogleId = await User.find({ googleId: null });
+    console.log('Found users with null googleId:', usersWithNullGoogleId.length);
+    
+    // Remove all but the first one
+    if (usersWithNullGoogleId.length > 1) {
+      const idsToDelete = usersWithNullGoogleId.slice(1).map(user => user._id);
+      await User.deleteMany({ _id: { $in: idsToDelete } });
+      console.log('Deleted duplicate users:', idsToDelete.length);
+    }
+    
+    // Recreate the index with proper sparse configuration
+    try {
+      await User.collection.createIndex({ googleId: 1 }, { sparse: true, unique: true });
+      console.log('Recreated googleId index with sparse: true, unique: true');
+    } catch (indexError) {
+      console.log('Error recreating index:', indexError.message);
+    }
+    
+    res.status(200).json({ 
+      message: 'Cleanup completed', 
+      deleted: usersWithNullGoogleId.length > 1 ? usersWithNullGoogleId.length - 1 : 0 
+    });
+  } catch (error) {
+    console.error('Error in cleanup:', error);
+    res.status(500).json({ message: 'Server error', details: error.message });
+  }
+});
+
+// Update user role (admin only) - TEMPORARY DEBUG ENDPOINT
+app.post('/api/admin/update-user-role', async (req, res) => {
+  try {
+    const { email, newRole } = req.body;
+    console.log('Update user role request:', { email, newRole });
+
+    if (!email || !newRole) {
+      return res.status(400).json({ message: 'Email and new role are required' });
+    }
+
+    console.log('Looking for user with email:', email);
+    const user = await User.findOne({ email });
+    if (!user) {
+      console.log('User not found:', email);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.log('Found user:', {
+      email: user.email,
+      currentRole: user.role,
+      name: user.name
+    });
+
+    const oldRole = user.role;
+    user.role = newRole;
+    
+    console.log('Saving user with new role...');
+    await user.save();
+    console.log('User saved successfully');
+
+    console.log(`Updated user ${email} from ${oldRole} to ${newRole}`);
+
+    res.status(200).json({ 
+      message: `User role updated from ${oldRole} to ${newRole}`,
+      user: {
+        email: user.email,
+        role: user.role,
+        name: user.name
+      }
+    });
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    console.error('Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack
+    });
+    res.status(500).json({ message: 'Server error', details: error.message });
+  }
+});
+
+// Debug endpoint to list all users (admin only) - TEMPORARY
+app.get('/api/admin/debug-users', async (req, res) => {
+  try {
+    const allUsers = await User.find({});
+    const userSummary = allUsers.map(user => ({
+      _id: user._id,
+      email: user.email,
+      role: user.role,
+      googleId: user.googleId,
+      name: user.name,
+      username: user.username
+    }));
+    
+    res.status(200).json({ 
+      message: 'All users retrieved', 
+      count: allUsers.length,
+      users: userSummary 
+    });
+  } catch (error) {
+    console.error('Error retrieving users:', error);
+    res.status(500).json({ message: 'Server error', details: error.message });
   }
 });
 

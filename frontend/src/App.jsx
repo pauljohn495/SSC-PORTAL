@@ -26,7 +26,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/memorandum" element={<Memorandum />} />
           <Route path="/student-handbook" element={<StudentHandbook />} />
-          <Route path="/admin-dashboard" element={<AdminDashboard />} />
+          <Route path="/admin-dashboard" element={<AdminHandbook />} />
           <Route path="/admin-handbook" element={<AdminHandbook />} />
           <Route path="/admin-memorandum" element={<AdminMemorandum />} />
           <Route path="/manage-users" element={<ManageUsers />} />

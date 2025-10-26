@@ -5,11 +5,11 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://2301102187_db_user:V0
 .catch((err) => console.log(err));
 
 const userSchema = new mongoose.Schema({
-  googleId: { type: String, sparse: true }, // Allow null for manual admins
+  googleId: { type: String, sparse: true, unique: true }, // Allow null for manual admins, but unique when present
   name: String,
-  email: String,
+  email: { type: String, unique: true }, // Make email unique
   picture: String,
-  username: String, // For manual admin login
+  username: { type: String, unique: true, sparse: true }, // For manual admin login, unique when present
   password: String, // For manual admin login
   role: { type: String, default: 'student' }
 }, { timestamps: true });
