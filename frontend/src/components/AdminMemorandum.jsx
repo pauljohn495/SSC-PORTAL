@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const AdminMemorandum = () => {
   const { logout, user } = useAuth();
@@ -58,6 +63,22 @@ const AdminMemorandum = () => {
     }
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this memorandum?')) {
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5001/api/admin/memorandums/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchDrafts(); // Refresh list
+      }
+    } catch (error) {
+      console.error('Error deleting memorandum:', error);
+    }
+  };
+
   const handleViewPDF = (fileUrl) => {
     window.open(fileUrl, '_blank');
   };
@@ -65,6 +86,19 @@ const AdminMemorandum = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const getTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
+    return `${Math.floor(diffInSeconds / 31536000)} years ago`;
   };
 
   return (
@@ -93,49 +127,84 @@ const AdminMemorandum = () => {
 
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <h1 className='text-3xl font-bold mb-8 text-blue-950'>Memorandum Drafts</h1>
+          
           {loading ? (
             <p>Loading...</p>
           ) : (
-            <div className='space-y-4'>
+            <div className='bg-white rounded-lg shadow-md'>
               {drafts.length > 0 ? (
-                drafts.map((draft) => (
-                  <div key={draft._id} className='bg-white p-6 rounded-lg shadow-md flex justify-between items-center'>
-                    <div className='flex-1'>
-                      <h2 className='text-xl font-semibold text-gray-800 mb-2'>{draft.title}</h2>
-                      <p className='text-sm text-gray-600 mb-2'>Year: {draft.year}</p>
-                      <p className='text-sm text-gray-600 mb-2'>Status: <span className={`font-semibold ${draft.status === 'approved' ? 'text-green-600' : draft.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}`}>{draft.status}</span></p>
-                      <p className='text-sm text-gray-600'>Created by: {draft.createdBy?.name} ({draft.createdBy?.email})</p>
-                    </div>
-                    <div className='flex flex-col space-y-2'>
-                      <button
-                        onClick={() => handleViewPDF(draft.fileUrl)}
-                        className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors'
-                      >
-                        View PDF
-                      </button>
-                      {draft.status === 'draft' && (
-                        <>
+                <div>
+                  {drafts.map((draft, index) => {
+                    const uploadedAt = new Date(draft.uploadedAt).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    });
+                    const timeAgo = getTimeAgo(draft.uploadedAt);
+                    
+                    return (
+                      <div key={draft._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === drafts.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-6 py-4'>
+                          <p className='text-gray-800 font-medium'>{draft.title}</p>
+                        </div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{uploadedAt}</div>
+                        <div className='w-32 px-6 py-4'>
+                          <span className={`font-semibold ${draft.status === 'approved' ? 'text-green-600' : draft.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}`}>
+                            {draft.status}
+                          </span>
+                        </div>
+                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
+                          {draft.status === 'draft' && (
+                            <>
+                              <button
+                                onClick={() => handleViewPDF(draft.fileUrl)}
+                                className='text-blue-600 hover:text-blue-800 transition-colors'
+                                title='View PDF'
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleApprove(draft._id)}
+                                className='text-green-600 hover:text-green-800 transition-colors'
+                                title='Approve'
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleReject(draft._id)}
+                                className='text-red-600 hover:text-red-800 transition-colors'
+                                title='Reject'
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
                           <button
-                            onClick={() => handleApprove(draft._id)}
-                            className='bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors'
+                            onClick={() => handleDelete(draft._id)}
+                            className='text-gray-400 hover:text-red-600 transition-colors'
+                            title='Delete'
                           >
-                            Approve
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
                           </button>
-                          <button
-                            onClick={() => handleReject(draft._id)}
-                            className='bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors'
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
-                <p className='text-center text-gray-500'>No memorandum drafts available.</p>
+                <div className='text-center py-12 text-gray-500'>No memorandum drafts available.</div>
               )}
             </div>
           )}

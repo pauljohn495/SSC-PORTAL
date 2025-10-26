@@ -18,16 +18,17 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Admin emails exempted from domain rule
-let adminEmails = ['johnpaultagalog@gmail.com', 'admin@student.buksu.edu.ph'];
+let adminEmails = ['admin@student.buksu.edu.ph'];
 
 // In-memory store for reset tokens (in production, use database)
 const resetTokens = new Map();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // President emails (for assigning president role)
-const presidentEmails = ['president@student.buksu.edu.ph']; // Add actual president emails here
+const presidentEmails = ['president@student.buksu.edu.ph', 'johnpaultagalog@gmail.com']; // Add actual president emails here
 
 app.post('/api/auth/google', async (req, res) => {
   try {
@@ -38,31 +39,50 @@ app.post('/api/auth/google', async (req, res) => {
       return res.status(400).json({ message: 'reCAPTCHA required' });
     }
 
-    // Check if email domain is @student.buksu.edu.ph or is an admin email
-    if (!email.endsWith('@student.buksu.edu.ph') && !adminEmails.includes(email)) {
+    // Check if email domain is @student.buksu.edu.ph or is an admin/president email
+    if (!email.endsWith('@student.buksu.edu.ph') && !adminEmails.includes(email) && !presidentEmails.includes(email)) {
       return res.status(403).json({ message: 'Only @student.buksu.edu.ph emails are allowed to login.' });
     }
 
     let user = await User.findOne({ googleId });
 
+    // If user not found by googleId, check by email (for users created via admin)
+    if (!user) {
+      user = await User.findOne({ email });
+    }
+
     if (!user) {
       let role = 'student';
-      if (adminEmails.includes(email)) {
-        role = 'admin';
-      } else if (presidentEmails.includes(email)) {
+      // Check president first, then admin (president takes precedence)
+      if (presidentEmails.includes(email)) {
         role = 'president';
+      } else if (adminEmails.includes(email)) {
+        role = 'admin';
       }
       user = new User({ googleId, name, email, picture, role });
       await user.save();
     } else {
-      // Update role if email is admin or president
-      if (adminEmails.includes(email) && user.role !== 'admin') {
-        user.role = 'admin';
-        await user.save();
-      } else if (presidentEmails.includes(email) && user.role !== 'president') {
-        user.role = 'president';
-        await user.save();
+      // Update googleId, name, and picture if they changed
+      if (!user.googleId || user.googleId !== googleId) {
+        user.googleId = googleId;
+        user.name = name;
+        user.picture = picture;
       }
+      
+      // Update role if email is in president or admin arrays and current role is different
+      // President takes precedence over admin
+      if (presidentEmails.includes(email)) {
+        if (user.role !== 'president') {
+          user.role = 'president';
+        }
+      } else if (adminEmails.includes(email)) {
+        if (user.role !== 'admin') {
+          user.role = 'admin';
+        }
+      }
+      // If email is not in either array, preserve the existing role
+      
+      await user.save();
     }
     res.status(200).json({ message: 'User authenticated', user });
   } catch (error) {
@@ -235,6 +255,21 @@ app.put('/api/admin/memorandums/:id', async (req, res) => {
   }
 });
 
+// Delete memorandum (admin only)
+app.delete('/api/admin/memorandums/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const memorandum = await Memorandum.findByIdAndDelete(id);
+    if (!memorandum) {
+      return res.status(404).json({ message: 'Memorandum not found' });
+    }
+    res.status(200).json({ message: 'Memorandum deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Upload memorandum draft (president only)
 app.post('/api/memorandums', async (req, res) => {
   try {
@@ -293,6 +328,21 @@ app.put('/api/admin/handbook/:id', async (req, res) => {
     }
 
     res.status(200).json({ message: `Handbook page ${status}`, handbook });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete handbook page (admin only)
+app.delete('/api/admin/handbook/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const handbook = await Handbook.findByIdAndDelete(id);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook page not found' });
+    }
+    res.status(200).json({ message: 'Handbook page deleted successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -375,9 +425,17 @@ app.post('/api/admin/add-president', async (req, res) => {
       }
       
       // If user exists but is not a president, update their role
-      console.log(`Updating existing user ${email} from ${existingUser.role} to president`);
+      const oldRole = existingUser.role;
+      console.log(`Updating existing user ${email} from ${oldRole} to president`);
       existingUser.role = 'president';
       await existingUser.save();
+      
+      // Remove from adminEmails if present
+      const adminIndex = adminEmails.indexOf(email);
+      if (adminIndex > -1) {
+        adminEmails.splice(adminIndex, 1);
+        console.log('Removed from adminEmails array:', email);
+      }
       
       // Add to presidentEmails array if not already there
       if (!presidentEmails.includes(email)) {
@@ -386,7 +444,7 @@ app.post('/api/admin/add-president', async (req, res) => {
       }
       
       return res.status(200).json({ 
-        message: `User role updated from ${existingUser.role} to president`, 
+        message: `User role updated from ${oldRole} to president`, 
         user: existingUser 
       });
     }
@@ -402,6 +460,13 @@ app.post('/api/admin/add-president', async (req, res) => {
     console.log('Saving user to database...');
     await newPresident.save();
     console.log('User saved successfully:', newPresident);
+
+    // Remove from adminEmails if present
+    const adminIndex = adminEmails.indexOf(email);
+    if (adminIndex > -1) {
+      adminEmails.splice(adminIndex, 1);
+      console.log('Removed from adminEmails array:', email);
+    }
 
     if (!presidentEmails.includes(email)) {
       presidentEmails.push(email);

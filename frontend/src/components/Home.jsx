@@ -37,6 +37,14 @@ const Home = () => {
     }
   }
 
+  const PresidentDashboardClick = () => {
+    if (user) {
+      navigate('/president-dashboard')
+    } else {
+      navigate('/login')
+    }
+  }
+
   const handleLogout = () => {
     logout()
     setMenuOpen(false)
@@ -63,6 +71,14 @@ const Home = () => {
               onClick={AdminDashboardClick}
             >
               Admin Dashboard
+            </button>
+          )}
+          {user && user.role === 'president' && (
+            <button
+              className='bg-white text-blue-950 px-4 py-2 rounded-lg font-semibold hover:bg-gray-200 transition cursor-pointer'
+              onClick={PresidentDashboardClick}
+            >
+              President Dashboard
             </button>
           )}
           {user && (

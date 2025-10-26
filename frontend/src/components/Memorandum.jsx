@@ -36,6 +36,18 @@ const Memorandum = () => {
     window.open(fileUrl, '_blank')
   }
 
+  // Group memorandums by year
+  const groupedMemorandums = memorandums.reduce((acc, memo) => {
+    if (!acc[memo.year]) {
+      acc[memo.year] = []
+    }
+    acc[memo.year].push(memo)
+    return acc
+  }, {})
+
+  // Sort years in descending order
+  const sortedYears = Object.keys(groupedMemorandums).sort((a, b) => parseInt(b) - parseInt(a))
+
   return (
     <div className='bg-white min-h-screen'>
       {/* Header */}
@@ -83,28 +95,31 @@ const Memorandum = () => {
       )}
 
       <main className='p-8'>
-        <div className='max-w-4xl mx-auto'>
-          <h1 className='text-3xl font-bold text-center mb-8 text-blue-950'>YEAR 2025 SCHOOL MEMOS</h1>
-          <div className='space-y-4'>
-            {memorandums.length > 0 ? (
-              memorandums.map((memo) => (
-                <div key={memo._id} className='bg-gray-100 p-4 rounded-lg shadow-md flex justify-between items-center'>
-                  <div className='flex-1'>
-                    <h2 className='text-xl font-semibold text-gray-800'>{memo.title}</h2>
-                    <p className='text-sm text-gray-600'>Year: {memo.year}</p>
-                  </div>
-                  <button
-                    onClick={() => handleViewPDF(memo.fileUrl)}
-                    className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors'
-                  >
-                    View PDF
-                  </button>
+        <div className='max-w-5xl mx-auto'>
+          <h1 className='text-4xl font-bold text-center mb-12 text-blue-950'>BUKIDNON STATE UNIVERSITY MEMO</h1>
+          
+          {sortedYears.length > 0 ? (
+            sortedYears.map((year) => (
+              <div key={year} className='mb-12'>
+                <h2 className='text-3xl font-bold text-center mb-8 text-blue-950'>YEAR {year} SCHOOL MEMOS</h2>
+                <div className='space-y-4'>
+                  {groupedMemorandums[year].map((memo, index) => (
+                    <div key={memo._id} className='flex items-center space-x-4'>
+                      <button
+                        onClick={() => handleViewPDF(memo.fileUrl)}
+                        className='bg-red-600 text-white px-6 py-3 rounded font-bold hover:bg-red-700 transition-colors text-sm whitespace-nowrap'
+                      >
+                        SCHOOL MEMO {index + 1}
+                      </button>
+                      <p className='text-black text-lg flex-1'>{memo.title}</p>
+                    </div>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <p className='text-center text-gray-500'>No memorandums available yet.</p>
-            )}
-          </div>
+              </div>
+            ))
+          ) : (
+            <p className='text-center text-gray-500 text-xl'>No memorandums available yet.</p>
+          )}
         </div>
       </main>
     </div>

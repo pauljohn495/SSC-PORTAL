@@ -7,7 +7,6 @@ const ActivityLogs = () => {
   const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, login, handbook, memorandum, user_management
 
   if (!user || user.role !== 'admin') {
     return <div>Access Denied</div>;
@@ -34,13 +33,21 @@ const ActivityLogs = () => {
     navigate('/login');
   };
 
-  const filteredLogs = logs.filter(log => {
-    if (filter === 'all') return true;
-    return log.action === filter;
-  });
-
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString();
+  };
+
+  const getTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
+    return `${Math.floor(diffInSeconds / 31536000)} years ago`;
   };
 
   const getActionColor = (action) => {
@@ -102,132 +109,42 @@ const ActivityLogs = () => {
         <div className="max-w-6xl mx-auto">
           <h1 className='text-3xl font-bold mb-8 text-blue-950'>Activity Logs</h1>
 
-          {/* Filter Section */}
-          <div className='bg-white p-6 rounded-lg shadow-md mb-8'>
-            <h2 className='text-xl font-semibold mb-4 text-gray-800'>Filter Logs</h2>
-            <div className='flex flex-wrap gap-4'>
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-2 rounded transition-colors ${
-                  filter === 'all' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                All Activities
-              </button>
-              <button
-                onClick={() => setFilter('login')}
-                className={`px-4 py-2 rounded transition-colors ${
-                  filter === 'login' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                🔐 Login Activities
-              </button>
-              <button
-                onClick={() => setFilter('handbook')}
-                className={`px-4 py-2 rounded transition-colors ${
-                  filter === 'handbook' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                📚 Handbook Activities
-              </button>
-              <button
-                onClick={() => setFilter('memorandum')}
-                className={`px-4 py-2 rounded transition-colors ${
-                  filter === 'memorandum' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                📄 Memorandum Activities
-              </button>
-              <button
-                onClick={() => setFilter('user_management')}
-                className={`px-4 py-2 rounded transition-colors ${
-                  filter === 'user_management' 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                👥 User Management
-              </button>
-            </div>
-          </div>
-
-          {/* Logs Display */}
           {loading ? (
             <div className='text-center py-8'>
               <p className='text-gray-500'>Loading activity logs...</p>
             </div>
           ) : (
-            <div className='space-y-4'>
-              {filteredLogs.length > 0 ? (
-                filteredLogs.map((log) => (
-                  <div key={log._id} className='bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow'>
-                    <div className='flex items-start justify-between'>
-                      <div className='flex-1'>
-                        <div className='flex items-center space-x-3 mb-2'>
-                          <span className='text-2xl'>{getActionIcon(log.action)}</span>
-                          <h3 className={`text-lg font-semibold ${getActionColor(log.action)}`}>
-                            {log.action.charAt(0).toUpperCase() + log.action.slice(1).replace('_', ' ')}
-                          </h3>
+            <div className='bg-white rounded-lg shadow-md'>
+              {logs.length > 0 ? (
+                <div>
+                  {logs.map((log, index) => {
+                    const timeAgo = getTimeAgo(log.timestamp);
+                    const formattedDate = formatDate(log.timestamp);
+                    
+                    return (
+                      <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-6 py-4'>
+                          <p className='text-gray-800 font-medium'>
+                            {log.action.charAt(0).toUpperCase() + log.action.slice(1).replace('_', ' ')} - {log.description}
+                          </p>
                         </div>
-                        <p className='text-gray-700 mb-2'>{log.description}</p>
-                        <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
-                          <span><strong>User:</strong> {log.user?.name || log.user?.email || 'Unknown'}</span>
-                          <span><strong>IP:</strong> {log.ipAddress || 'N/A'}</span>
-                          <span><strong>Date:</strong> {formatDate(log.timestamp)}</span>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-48 px-6 py-4 text-sm text-gray-600'>{formattedDate}</div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>None</div>
+                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
+                          <button className='text-blue-600 hover:text-blue-800 transition-colors'>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          </button>
                         </div>
-                        {log.details && (
-                          <div className='mt-3 p-3 bg-gray-50 rounded'>
-                            <p className='text-sm text-gray-600'><strong>Details:</strong> {log.details}</p>
-                          </div>
-                        )}
                       </div>
-                    </div>
-                  </div>
-                ))
+                    );
+                  })}
+                </div>
               ) : (
-                <div className='text-center py-8'>
-                  <p className='text-gray-500'>No activity logs found for the selected filter.</p>
-                </div>
+                <div className='text-center py-12 text-gray-500'>No activity logs found.</div>
               )}
-            </div>
-          )}
-
-          {/* Summary Stats */}
-          {!loading && logs.length > 0 && (
-            <div className='mt-8 bg-white p-6 rounded-lg shadow-md'>
-              <h2 className='text-xl font-semibold mb-4 text-gray-800'>Activity Summary</h2>
-              <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                <div className='text-center p-4 bg-blue-50 rounded-lg'>
-                  <div className='text-2xl font-bold text-blue-600'>{logs.length}</div>
-                  <div className='text-sm text-gray-600'>Total Activities</div>
-                </div>
-                <div className='text-center p-4 bg-green-50 rounded-lg'>
-                  <div className='text-2xl font-bold text-green-600'>
-                    {logs.filter(log => log.action === 'login').length}
-                  </div>
-                  <div className='text-sm text-gray-600'>Login Activities</div>
-                </div>
-                <div className='text-center p-4 bg-purple-50 rounded-lg'>
-                  <div className='text-2xl font-bold text-purple-600'>
-                    {logs.filter(log => log.action === 'handbook').length}
-                  </div>
-                  <div className='text-sm text-gray-600'>Handbook Activities</div>
-                </div>
-                <div className='text-center p-4 bg-orange-50 rounded-lg'>
-                  <div className='text-2xl font-bold text-orange-600'>
-                    {logs.filter(log => log.action === 'memorandum').length}
-                  </div>
-                  <div className='text-sm text-gray-600'>Memorandum Activities</div>
-                </div>
-              </div>
             </div>
           )}
         </div>

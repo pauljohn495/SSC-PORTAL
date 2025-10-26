@@ -1,15 +1,25 @@
-import React from 'react';
-import PresidentUpload from './PresidentUpload';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-function PresidentDashboard() {
+const PresidentDashboard = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // Automatically redirect to president handbook
+    navigate('/president-handbook');
+  }, [navigate]);
+
+  if (!user || user.role !== 'president') {
+    return <div>Access Denied</div>;
+  }
+
   return (
-    <div style={{ padding: '24px', maxWidth: '600px', margin: '0 auto' }}>
-      <h2>President Dashboard</h2>
-      <p>Welcome to the President's Dashboard. You can upload important documents for all users below.</p>
-      <PresidentUpload />
-      {/* Add more dashboard features here as needed */}
+    <div className='flex items-center justify-center min-h-screen'>
+      <p>Redirecting...</p>
     </div>
   );
-}
+};
 
 export default PresidentDashboard;

@@ -58,9 +58,38 @@ const AdminHandbook = () => {
     }
   };
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this handbook page?')) {
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5001/api/admin/handbook/${id}`, {
+        method: 'DELETE'
+      });
+      if (response.ok) {
+        fetchDrafts(); // Refresh list
+      }
+    } catch (error) {
+      console.error('Error deleting handbook:', error);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const getTimeAgo = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} months ago`;
+    return `${Math.floor(diffInSeconds / 31536000)} years ago`;
   };
 
   return (
@@ -89,44 +118,74 @@ const AdminHandbook = () => {
 
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <h1 className='text-3xl font-bold mb-8 text-blue-950'>Handbook Drafts</h1>
+          
           {loading ? (
             <p>Loading...</p>
           ) : (
-            <div className='space-y-4'>
+            <div className='bg-white rounded-lg shadow-md'>
               {drafts.length > 0 ? (
-                drafts.map((draft) => (
-                  <div key={draft._id} className='bg-white p-6 rounded-lg shadow-md'>
-                    <h2 className='text-xl font-semibold text-gray-800 mb-2'>{draft.title}</h2>
-                    <p className='text-sm text-gray-600 mb-2'>Status: <span className={`font-semibold ${draft.status === 'approved' ? 'text-green-600' : draft.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}`}>{draft.status}</span></p>
-                    <p className='text-sm text-gray-600 mb-4'>Created by: {draft.createdBy?.name} ({draft.createdBy?.email})</p>
-                    <div className='mb-4'>
-                      <h3 className='font-semibold mb-2'>Content:</h3>
-                      <div className='bg-gray-50 p-4 rounded max-h-40 overflow-y-auto'>
-                        <pre className='whitespace-pre-wrap text-sm'>{draft.content}</pre>
+                <div>
+                  {drafts.map((draft, index) => {
+                    const createdAt = new Date(draft.createdAt).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    });
+                    const timeAgo = getTimeAgo(draft.createdAt);
+                    
+                    return (
+                      <div key={draft._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === drafts.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-6 py-4'>
+                          <p className='text-gray-800 font-medium'>{draft.title}</p>
+                        </div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>
+                        <div className='w-32 px-6 py-4'>
+                          <span className={`font-semibold ${draft.status === 'approved' ? 'text-green-600' : draft.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}`}>
+                            {draft.status}
+                          </span>
+                        </div>
+                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
+                          {draft.status === 'draft' && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(draft._id)}
+                                className='text-green-600 hover:text-green-800 transition-colors'
+                                title='Approve'
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleReject(draft._id)}
+                                className='text-red-600 hover:text-red-800 transition-colors'
+                                title='Reject'
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={() => handleDelete(draft._id)}
+                            className='text-gray-400 hover:text-red-600 transition-colors'
+                            title='Delete'
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    {draft.status === 'draft' && (
-                      <div className='flex space-x-4'>
-                        <button
-                          onClick={() => handleApprove(draft._id)}
-                          className='bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors'
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleReject(draft._id)}
-                          className='bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors'
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
+                    );
+                  })}
+                </div>
               ) : (
-                <p className='text-center text-gray-500'>No handbook drafts available.</p>
+                <div className='text-center py-12 text-gray-500'>No handbook drafts available.</div>
               )}
             </div>
           )}
