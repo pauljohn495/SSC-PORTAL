@@ -1,9 +1,5 @@
 import mongoose from 'mongoose';
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://2301102187_db_user:V04dFoI1ZvOcjsdX@buksu.pdd0zsh.mongodb.net/buksu?retryWrites=true&w=majority&appName=BUKSU')
-.then (() => console.log('MongoDB connected'))
-.catch((err) => console.log(err));
-
 const userSchema = new mongoose.Schema({
   googleId: { type: String, sparse: true, unique: true }, // Allow null for manual admins, but unique when present
   name: String,
@@ -11,7 +7,9 @@ const userSchema = new mongoose.Schema({
   picture: String,
   username: { type: String, unique: true, sparse: true }, // For manual admin login, unique when present
   password: String, // For manual admin login
-  role: { type: String, default: 'student' }
+  role: { type: String, default: 'student' },
+  resetToken: String,
+  resetTokenExpiry: Date
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);
@@ -23,7 +21,14 @@ const handbookSchema = new mongoose.Schema({
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  // Priority-based editing fields
+  priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  priorityEditStartedAt: { type: Date },
+  // Edit tracking fields
+  editedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  editedAt: { type: Date },
+  version: { type: Number, default: 1 }
 });
 
 const Handbook = mongoose.model('Handbook', handbookSchema);
@@ -35,7 +40,14 @@ const memorandumSchema = new mongoose.Schema({
   fileUrl: { type: String, required: true },
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  uploadedAt: { type: Date, default: Date.now }
+  uploadedAt: { type: Date, default: Date.now },
+  // Priority-based editing fields
+  priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  priorityEditStartedAt: { type: Date },
+  // Edit tracking fields
+  editedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  editedAt: { type: Date },
+  version: { type: Number, default: 1 }
 });
 
 const Memorandum = mongoose.model('Memorandum', memorandumSchema);

@@ -18,6 +18,9 @@ const PresidentMemorandum = () => {
   const [editTitle, setEditTitle] = useState('');
   const [editYear, setEditYear] = useState('');
   const [editFile, setEditFile] = useState(null);
+  const [editVersion, setEditVersion] = useState(1);
+  const [hasPriority, setHasPriority] = useState(false);
+  const [priorityError, setPriorityError] = useState('');
   const fileInputRef = useRef(null);
 
   if (!user || user.role !== 'president') {
@@ -32,9 +35,8 @@ const PresidentMemorandum = () => {
     try {
       const response = await fetch('http://localhost:5001/api/admin/memorandums');
       const data = await response.json();
-      // Filter to show only memorandums created by the current president
-      const presidentMemorandums = data.filter(memo => memo.createdBy && memo.createdBy._id === user._id);
-      setMemorandums(presidentMemorandums);
+      // Show all memorandums created by any president
+      setMemorandums(data);
     } catch (error) {
       console.error('Error fetching memorandums:', error);
     } finally {
@@ -122,17 +124,52 @@ const PresidentMemorandum = () => {
     }
   };
 
-  const handleEdit = (memorandum) => {
-    setEditingMemorandum(memorandum);
-    setEditTitle(memorandum.title);
-    setEditYear(memorandum.year.toString());
-    setEditFile(null);
-    setShowModal(true);
-    setTitle('');
-    setYear('');
-    setFile(null);
-    setMessage('');
-    setMessageType('');
+  const handleEdit = async (memorandum) => {
+    try {
+      // Try to get edit priority
+      const priorityResponse = await fetch(`http://localhost:5001/api/memorandums/${memorandum._id}/priority`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id })
+      });
+
+      const priorityData = await priorityResponse.json();
+
+      if (priorityData.hasPriority) {
+        // User has priority
+        setHasPriority(true);
+        setPriorityError('');
+        setEditingMemorandum(memorandum);
+        setEditTitle(memorandum.title);
+        setEditYear(memorandum.year.toString());
+        setEditFile(null);
+        setEditVersion(memorandum.version || 1);
+        setShowModal(true);
+        setTitle('');
+        setYear('');
+        setFile(null);
+        setMessage('');
+        setMessageType('');
+      } else {
+        // Another user has priority
+        setHasPriority(false);
+        setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
+        setEditingMemorandum(memorandum);
+        setEditTitle(memorandum.title);
+        setEditYear(memorandum.year.toString());
+        setEditFile(null);
+        setEditVersion(memorandum.version || 1);
+        setShowModal(true);
+        setTitle('');
+        setYear('');
+        setFile(null);
+        setMessage('');
+        setMessageType('');
+      }
+    } catch (error) {
+      console.error('Error getting edit priority:', error);
+      setPriorityError('Failed to get edit priority. Please try again.');
+    }
   };
 
   const handleUpdate = async (e) => {
@@ -175,7 +212,8 @@ const PresidentMemorandum = () => {
           title: editTitle,
           year: parseInt(editYear),
           fileUrl: fileUrl,
-          userId: user._id
+          userId: user._id,
+          version: editVersion
         })
       });
 
@@ -203,7 +241,20 @@ const PresidentMemorandum = () => {
     }
   };
 
-  const closeModal = () => {
+  const closeModal = async () => {
+    // Clear priority if we have it
+    if (hasPriority && editingMemorandum) {
+      try {
+        await fetch(`http://localhost:5001/api/memorandums/${editingMemorandum._id}/clear-priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+      } catch (error) {
+        console.error('Error clearing priority:', error);
+      }
+    }
+
     setShowModal(false);
     setEditingMemorandum(null);
     setTitle('');
@@ -212,6 +263,9 @@ const PresidentMemorandum = () => {
     setEditTitle('');
     setEditYear('');
     setEditFile(null);
+    setEditVersion(1);
+    setHasPriority(false);
+    setPriorityError('');
     setMessage('');
     setMessageType('');
     if (fileInputRef.current) {
@@ -302,8 +356,26 @@ const PresidentMemorandum = () => {
                   return (
                     <div key={memorandum._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === memorandums.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                       <div className='flex-1 px-6 py-4'>
-                        <p className='text-gray-800 font-medium'>{memorandum.title}</p>
+                        <div className='flex items-center space-x-2'>
+                          <p className='text-gray-800 font-medium'>{memorandum.title}</p>
+                          {memorandum.editedBy && (
+                            <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
+                              Edited
+                            </span>
+                          )}
+                        </div>
                         <p className='text-sm text-gray-500 mt-1'>Year: {memorandum.year}</p>
+                        <p className='text-xs text-gray-400 mt-1'>Created by: {memorandum.createdBy ? memorandum.createdBy.name : 'Unknown'}</p>
+                        {memorandum.editedBy && (
+                          <p className='text-xs text-gray-400 mt-1'>
+                            Last edited: {new Date(memorandum.editedAt).toLocaleString()}
+                          </p>
+                        )}
+                        {memorandum.priorityEditor && memorandum.priorityEditStartedAt && (
+                          <p className='text-xs text-gray-500 mt-1'>
+                            Clicked Edit at: {new Date(memorandum.priorityEditStartedAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                       <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
                       <div className='w-28 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>
@@ -341,6 +413,18 @@ const PresidentMemorandum = () => {
             <h2 className='text-2xl font-bold mb-6 text-blue-950'>
               {editingMemorandum ? 'Edit Memorandum' : 'Create Memorandum'}
             </h2>
+
+            {priorityError && (
+              <div className={`mb-6 p-4 rounded-lg ${hasPriority ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'}`}>
+                {priorityError}
+              </div>
+            )}
+
+            {hasPriority && (
+              <div className='mb-6 p-4 bg-green-50 text-green-800 rounded-lg'>
+                ✅ You have edit priority - your changes will be saved
+              </div>
+            )}
 
             <form onSubmit={editingMemorandum ? handleUpdate : handleUpload}>
               <div className='mb-6'>
@@ -400,14 +484,16 @@ const PresidentMemorandum = () => {
               <div className='flex space-x-4'>
                 <button
                   type='submit'
-                  disabled={uploading}
+                  disabled={uploading || (editingMemorandum && !hasPriority)}
                   className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
-                    uploading
+                    uploading || (editingMemorandum && !hasPriority)
                       ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
                 >
-                  {uploading ? (editingMemorandum ? 'Updating...' : 'Creating...') : (editingMemorandum ? 'Update Memorandum' : 'Create Memorandum')}
+                  {uploading ? (editingMemorandum ? 'Updating...' : 'Creating...') : 
+                   editingMemorandum && !hasPriority ? 'No Save Priority' :
+                   editingMemorandum ? 'Update Memorandum' : 'Create Memorandum'}
                 </button>
                 <button
                   type='button'

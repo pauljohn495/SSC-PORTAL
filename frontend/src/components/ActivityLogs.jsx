@@ -140,7 +140,6 @@ const ActivityLogs = () => {
                       <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                         <div className='flex-1 px-6 py-4'>
                           <div className='flex items-center space-x-3'>
-                            <span className='text-lg'>{getActionIcon(log.action)}</span>
                             <div>
                               <div className='flex items-center space-x-2'>
                                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(log.action)}`}>

@@ -16,6 +16,9 @@ const PresidentHandbook = () => {
   const [editingHandbook, setEditingHandbook] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
+  const [editVersion, setEditVersion] = useState(1);
+  const [hasPriority, setHasPriority] = useState(false);
+  const [priorityError, setPriorityError] = useState('');
 
   if (!user || user.role !== 'president') {
     return <div>Access Denied</div>;
@@ -29,9 +32,8 @@ const PresidentHandbook = () => {
     try {
       const response = await fetch('http://localhost:5001/api/admin/handbook');
       const data = await response.json();
-      // Filter to show only handbooks created by the current president
-      const presidentHandbooks = data.filter(hb => hb.createdBy && hb.createdBy._id === user._id);
-      setHandbooks(presidentHandbooks);
+      // Show all handbooks created by any president
+      setHandbooks(data);
     } catch (error) {
       console.error('Error fetching handbooks:', error);
     } finally {
@@ -83,15 +85,48 @@ const PresidentHandbook = () => {
     }
   };
 
-  const handleEdit = (handbook) => {
-    setEditingHandbook(handbook);
-    setEditTitle(handbook.title);
-    setEditContent(handbook.content);
-    setShowModal(true);
-    setTitle('');
-    setContent('');
-    setMessage('');
-    setMessageType('');
+  const handleEdit = async (handbook) => {
+    try {
+      // Try to get edit priority
+      const priorityResponse = await fetch(`http://localhost:5001/api/handbook/${handbook._id}/priority`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user._id })
+      });
+
+      const priorityData = await priorityResponse.json();
+
+      if (priorityData.hasPriority) {
+        // User has priority
+        setHasPriority(true);
+        setPriorityError('');
+        setEditingHandbook(handbook);
+        setEditTitle(handbook.title);
+        setEditContent(handbook.content);
+        setEditVersion(handbook.version || 1);
+        setShowModal(true);
+        setTitle('');
+        setContent('');
+        setMessage('');
+        setMessageType('');
+      } else {
+        // Another user has priority
+        setHasPriority(false);
+        setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
+        setEditingHandbook(handbook);
+        setEditTitle(handbook.title);
+        setEditContent(handbook.content);
+        setEditVersion(handbook.version || 1);
+        setShowModal(true);
+        setTitle('');
+        setContent('');
+        setMessage('');
+        setMessageType('');
+      }
+    } catch (error) {
+      console.error('Error getting edit priority:', error);
+      setPriorityError('Failed to get edit priority. Please try again.');
+    }
   };
 
   const handleUpdate = async (e) => {
@@ -112,7 +147,8 @@ const PresidentHandbook = () => {
         body: JSON.stringify({
           title: editTitle,
           content: editContent,
-          userId: user._id
+          userId: user._id,
+          version: editVersion
         })
       });
 
@@ -139,13 +175,29 @@ const PresidentHandbook = () => {
     }
   };
 
-  const closeModal = () => {
+  const closeModal = async () => {
+    // Clear priority if we have it
+    if (hasPriority && editingHandbook) {
+      try {
+        await fetch(`http://localhost:5001/api/handbook/${editingHandbook._id}/clear-priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+      } catch (error) {
+        console.error('Error clearing priority:', error);
+      }
+    }
+
     setShowModal(false);
     setEditingHandbook(null);
     setTitle('');
     setContent('');
     setEditTitle('');
     setEditContent('');
+    setEditVersion(1);
+    setHasPriority(false);
+    setPriorityError('');
     setMessage('');
     setMessageType('');
   };
@@ -233,8 +285,26 @@ const PresidentHandbook = () => {
                   return (
                     <div key={handbook._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === handbooks.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                       <div className='flex-1 px-6 py-4'>
-                        <p className='text-gray-800 font-medium'>{handbook.title}</p>
+                        <div className='flex items-center space-x-2'>
+                          <p className='text-gray-800 font-medium'>{handbook.title}</p>
+                          {handbook.editedBy && (
+                            <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
+                              Edited
+                            </span>
+                          )}
+                        </div>
                         <p className='text-sm text-gray-500 mt-1 truncate'>{handbook.content.substring(0, 100)}...</p>
+                        <p className='text-xs text-gray-400 mt-1'>Created by: {handbook.createdBy ? handbook.createdBy.name : 'Unknown'}</p>
+                        {handbook.editedBy && (
+                          <p className='text-xs text-gray-400 mt-1'>
+                            Last edited: {new Date(handbook.editedAt).toLocaleString()}
+                          </p>
+                        )}
+                        {handbook.priorityEditor && handbook.priorityEditStartedAt && (
+                          <p className='text-xs text-gray-500 mt-1'>
+                            Clicked Edit at: {new Date(handbook.priorityEditStartedAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                       <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
                       <div className='w-28 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>
@@ -272,6 +342,18 @@ const PresidentHandbook = () => {
             <h2 className='text-2xl font-bold mb-6 text-blue-950'>
               {editingHandbook ? 'Edit Handbook Page' : 'Create Handbook Page'}
             </h2>
+
+            {priorityError && (
+              <div className={`mb-6 p-4 rounded-lg ${hasPriority ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'}`}>
+                {priorityError}
+              </div>
+            )}
+
+            {hasPriority && (
+              <div className='mb-6 p-4 bg-green-50 text-green-800 rounded-lg'>
+                ✅ You have edit priority - your changes will be saved
+              </div>
+            )}
 
             <form onSubmit={editingHandbook ? handleUpdate : handleSubmit}>
               <div className='mb-6'>
@@ -313,14 +395,16 @@ const PresidentHandbook = () => {
               <div className='flex space-x-4'>
                 <button
                   type='submit'
-                  disabled={submitting}
+                  disabled={submitting || (editingHandbook && !hasPriority)}
                   className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
-                    submitting
+                    submitting || (editingHandbook && !hasPriority)
                       ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
                 >
-                  {submitting ? (editingHandbook ? 'Updating...' : 'Creating...') : (editingHandbook ? 'Update Handbook Page' : 'Create Handbook Page')}
+                  {submitting ? (editingHandbook ? 'Updating...' : 'Creating...') : 
+                   editingHandbook && !hasPriority ? 'No Save Priority' :
+                   editingHandbook ? 'Update Handbook Page' : 'Create Handbook Page'}
                 </button>
                 <button
                   type='button'

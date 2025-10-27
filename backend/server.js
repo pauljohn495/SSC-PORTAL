@@ -1,33 +1,35 @@
-import dotenv from "dotenv";
-import { fileURLToPath } from 'url';
-import path from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-import express from "express";
-import cors from 'cors';
+import express from 'express';
 import mongoose from 'mongoose';
+import cors from 'cors';
 import nodemailer from 'nodemailer';
-import crypto from 'crypto';
-import { User, Handbook, Memorandum, ActivityLog } from "./src/database/db.js";
+import dotenv from 'dotenv';
+import { User, Handbook, Memorandum, ActivityLog } from './src/database/db.js';
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Admin emails exempted from domain rule
-let adminEmails = ['admin@student.buksu.edu.ph'];
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// In-memory store for reset tokens (in production, use database)
-const resetTokens = new Map();
+// MongoDB connection
+mongoose.connect('mongodb+srv://2301102187_db_user:V04dFoI1ZvOcjsdX@buksu.pdd0zsh.mongodb.net/buksu?retryWrites=true&w=majority&appName=BUKSU', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+}).then(() => {
+  console.log('MongoDB connected successfully');
+}).catch((err) => {
+  console.error('MongoDB connection error:', err);
+});
 
 // Helper function to log activities
 const logActivity = async (userId, action, description, details = null, req = null) => {
   try {
     let actualUserId = userId;
-    
+
     // Handle special system admin actions
     if (userId === 'system_admin' || userId === 'default_admin') {
       // Create or find a system admin user for logging purposes
@@ -42,7 +44,7 @@ const logActivity = async (userId, action, description, details = null, req = nu
       }
       actualUserId = systemAdmin._id;
     }
-    
+
     const logData = {
       user: actualUserId,
       action,
@@ -50,12 +52,12 @@ const logActivity = async (userId, action, description, details = null, req = nu
       details,
       timestamp: new Date()
     };
-    
+
     if (req) {
       logData.ipAddress = req.ip || req.connection.remoteAddress;
       logData.userAgent = req.get('User-Agent');
     }
-    
+
     const activityLog = new ActivityLog(logData);
     await activityLog.save();
   } catch (error) {
@@ -63,138 +65,26 @@ const logActivity = async (userId, action, description, details = null, req = nu
   }
 };
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// President emails (for assigning president role)
-const presidentEmails = ['president@student.buksu.edu.ph', 'johnpaultagalog@gmail.com']; // Add actual president emails here
-
+// Google OAuth callback
 app.post('/api/auth/google', async (req, res) => {
   try {
-    const { googleId, name, email, picture, recaptchaToken } = req.body;
+    const { email, name, picture } = req.body;
 
-    // Verify reCAPTCHA (in production, verify with Google)
-    if (!recaptchaToken) {
-      return res.status(400).json({ message: 'reCAPTCHA required' });
-    }
-
-    // Check if email domain is @student.buksu.edu.ph or is an admin/president email
-    if (!email.endsWith('@student.buksu.edu.ph') && !adminEmails.includes(email) && !presidentEmails.includes(email)) {
-      return res.status(403).json({ message: 'Only @student.buksu.edu.ph emails are allowed to login.' });
-    }
-
-    let user = await User.findOne({ googleId });
-
-    // If user not found by googleId, check by email (for users created via admin)
+    let user = await User.findOne({ email });
     if (!user) {
-      user = await User.findOne({ email });
-    }
-
-    if (!user) {
-      let role = 'student';
-      // Check president first, then admin (president takes precedence)
-      if (presidentEmails.includes(email)) {
-        role = 'president';
-      } else if (adminEmails.includes(email)) {
-        role = 'admin';
-      }
-      user = new User({ googleId, name, email, picture, role });
-      await user.save();
-    } else {
-      // Update googleId, name, and picture if they changed
-      if (!user.googleId || user.googleId !== googleId) {
-        user.googleId = googleId;
-        user.name = name;
-        user.picture = picture;
-      }
-      
-      // Update role if email is in president or admin arrays and current role is different
-      // President takes precedence over admin
-      if (presidentEmails.includes(email)) {
-        if (user.role !== 'president') {
-          user.role = 'president';
-        }
-      } else if (adminEmails.includes(email)) {
-        if (user.role !== 'admin') {
-          user.role = 'admin';
-        }
-      }
-      // If email is not in either array, preserve the existing role
-      
+      user = new User({ email, name, picture, role: 'student' });
       await user.save();
     }
-    
+
     // Log login activity
-    await logActivity(user._id, 'login', `User logged in via Google OAuth`, { email: user.email }, req);
-    
-    res.status(200).json({ message: 'User authenticated', user });
+    await logActivity(user._id, 'login', `User logged in via Google OAuth`, { 
+      email: user.email, 
+      name: user.name 
+    }, req);
+
+    res.json({ user });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-app.post('/api/auth/admin', async (req, res) => {
-  try {
-    const { username, password, recaptchaToken } = req.body;
-
-    console.log('Admin login attempt:', { username, password: '***', recaptchaToken: recaptchaToken ? 'present' : 'missing' });
-
-    // Verify reCAPTCHA (in production, verify with Google)
-    if (!recaptchaToken) {
-      return res.status(400).json({ message: 'reCAPTCHA required' });
-    }
-
-    // Check database for admin user
-    console.log('Looking for user with:', { username, password: '***', role: 'admin' });
-    
-    // First, let's find the user by username and role only
-    const userByUsername = await User.findOne({ username, role: 'admin' });
-    console.log('User found by username and role:', userByUsername ? 'Yes' : 'No');
-    
-    if (userByUsername) {
-      console.log('Stored password:', userByUsername.password);
-      console.log('Provided password:', password);
-      console.log('Passwords match:', userByUsername.password === password);
-      
-      // Check if passwords match (with trimming to handle whitespace issues)
-      if (userByUsername.password && userByUsername.password.trim() === password.trim()) {
-        console.log('Admin authenticated successfully:', userByUsername.name);
-        res.status(200).json({ message: 'Admin authenticated', user: userByUsername });
-        return;
-      }
-    }
-    
-    const user = await User.findOne({ username, password, role: 'admin' });
-    console.log('Database query result:', user ? 'User found' : 'User not found');
-    
-    if (user) {
-      console.log('Admin authenticated successfully:', user.name);
-      // Log admin login activity
-      await logActivity(user._id, 'login', `Admin logged in manually`, { username: username }, req);
-      res.status(200).json({ message: 'Admin authenticated', user });
-      return;
-    }
-
-    // Fallback to default admin
-    if (username === 'admin' && password === 'admin123') {
-      console.log('Using default admin credentials');
-      const defaultUser = {
-        name: 'Admin',
-        email: 'johnpaultagalog@gmail.com',
-        role: 'admin',
-        picture: '' // No picture for manual login
-      };
-      // Log default admin login (we'll use a special ID for this)
-      await logActivity('default_admin', 'login', `Default admin logged in`, { username: username }, req);
-      res.status(200).json({ message: 'Admin authenticated', user: defaultUser });
-    } else {
-      console.log('Invalid credentials provided');
-      res.status(401).json({ message: 'Invalid credentials' });
-    }
-  } catch (error) {
-    console.error('Admin login error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -204,106 +94,278 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
 
-    if (!adminEmails.includes(email)) {
-      return res.status(400).json({ message: 'Only admin email is allowed for password reset.' });
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
     }
 
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
-    const expiry = Date.now() + 3600000; // 1 hour
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      return res.json({ message: 'If that email exists in our system, a password reset link has been sent.' });
+    }
 
-    resetTokens.set(resetCode, { email, expiry });
+    // Only allow password reset for admin users
+    if (user.role !== 'admin') {
+      return res.json({ message: 'If that email exists in our system, a password reset link has been sent.' });
+    }
 
-    // Send email
+    // Generate a simple reset token
+    const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    
+    // Store reset token with expiration (24 hours)
+    user.resetToken = resetToken;
+    user.resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await user.save();
+
+    // Create email transporter (using nodemailer)
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.EMAIL_USER || 'your-email@gmail.com',
+        pass: process.env.EMAIL_PASS || 'your-app-password'
       }
     });
 
+    // Email content
+    const resetUrl = `http://localhost:5173/reset-password?token=${resetToken}`;
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER || 'your-email@gmail.com',
       to: email,
-      subject: 'Password Reset Code',
-      text: `Your password reset code is: ${resetCode}. Use this code to reset your password at http://localhost:5173/reset-password`
+      subject: 'Password Reset Request - BUKSU IPT',
+      html: `
+        <h2>Password Reset Request</h2>
+        <p>You requested a password reset for your admin account.</p>
+        <p>Click the link below to reset your password:</p>
+        <p><a href="${resetUrl}">${resetUrl}</a></p>
+        <p><strong>Or use this reset code: ${resetToken}</strong></p>
+        <p>This link will expire in 24 hours.</p>
+        <p>If you didn't request this, please ignore this email.</p>
+      `
     };
 
-    await transporter.sendMail(mailOptions);
-
-    res.status(200).json({ message: 'Password reset code sent to your email.' });
+    // Send email
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log('Password reset email sent to:', email);
+      
+      // Also return the reset URL in the response for testing/backup
+      res.json({ 
+        message: 'Password reset email has been sent to your email address.',
+        resetUrl: resetUrl,
+        resetToken: resetToken
+      });
+    } catch (emailError) {
+      console.error('Error sending email:', emailError);
+      console.log('========================================');
+      console.log('PASSWORD RESET LINK (Email failed):');
+      console.log('Email:', email);
+      console.log('Reset URL:', resetUrl);
+      console.log('Reset Token:', resetToken);
+      console.log('========================================');
+      
+      // Fallback: return the reset URL and token in the response
+      res.json({ 
+        message: 'Email could not be sent, but here is your password reset link (also check server console):',
+        resetUrl: resetUrl,
+        resetToken: resetToken,
+        email: email
+      });
+    }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error sending reset email:', error);
+    res.status(500).json({ message: 'Failed to send reset email' });
   }
 });
 
-// Reset password endpoint
-app.post('/api/auth/reset-password', async (req, res) => {
+// Admin login
+app.post('/api/auth/admin', async (req, res) => {
   try {
-    const { code, newPassword } = req.body;
+    const { email, password, username } = req.body;
 
-    const tokenData = resetTokens.get(code);
-    if (!tokenData || tokenData.expiry < Date.now()) {
-      return res.status(400).json({ message: 'Invalid or expired code.' });
+    // Find user by email or username for admin login
+    let user;
+    if (email) {
+      user = await User.findOne({ email, role: 'admin' });
+    } else if (username) {
+      user = await User.findOne({ username, role: 'admin' });
+    }
+    
+    if (!user || user.password !== password) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // In a real app, update password in database
-    // For now, just remove code
-    resetTokens.delete(code);
+    // Log admin login activity
+    await logActivity(user._id, 'admin_login', `Admin logged in manually`, { 
+      email: user.email 
+    }, req);
 
-    res.status(200).json({ message: 'Password reset successfully.' });
+    res.json({ user });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get all approved memorandums (public)
-app.get('/api/memorandums', async (req, res) => {
+// Get all users (admin only)
+app.get('/api/admin/users', async (req, res) => {
   try {
-    const memorandums = await Memorandum.find({ status: 'approved' }).sort({ year: -1, uploadedAt: -1 });
-    res.status(200).json(memorandums);
+    const users = await User.find().sort({ createdAt: -1 });
+    res.json(users);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get all memorandum drafts (for admin)
+// Add admin user (admin only)
+app.post('/api/admin/add-admin', async (req, res) => {
+  try {
+    const { email, password, name } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const admin = new User({ email, password, name, role: 'admin' });
+    await admin.save();
+
+    // Log admin creation
+    await logActivity('system_admin', 'admin_create', `Admin account created for ${email}`, { 
+      adminEmail: email, 
+      adminName: name 
+    }, req);
+
+    res.status(201).json({ message: 'Admin created successfully', admin });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete user (admin only)
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    await User.findByIdAndDelete(id);
+
+    // Log user deletion
+    await logActivity('system_admin', 'user_delete', `User deleted: ${user.email}`, { 
+      deletedUserEmail: user.email, 
+      deletedUserName: user.name 
+    }, req);
+
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all handbooks (admin only)
+app.get('/api/admin/handbook', async (req, res) => {
+  try {
+    const handbooks = await Handbook.find().populate('createdBy').populate('priorityEditor').populate('editedBy').sort({ createdAt: -1 });
+    res.json(handbooks);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Approve/reject handbook (admin only)
+app.put('/api/admin/handbook/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const handbook = await Handbook.findById(id);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    handbook.status = status;
+    await handbook.save();
+
+    // Log admin action
+    await logActivity('system_admin', 'handbook_approve', `Handbook "${handbook.title}" ${status}`, { 
+      handbookId: id, 
+      title: handbook.title, 
+      status 
+    }, req);
+
+    res.json({ message: `Handbook ${status} successfully`, handbook });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete handbook (admin only)
+app.delete('/api/admin/handbook/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const handbook = await Handbook.findById(id);
+    
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    await Handbook.findByIdAndDelete(id);
+
+    // Log admin deletion
+    await logActivity('system_admin', 'handbook_delete', `Handbook deleted: "${handbook.title}"`, { 
+      handbookId: id, 
+      title: handbook.title 
+    }, req);
+
+    res.json({ message: 'Handbook deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all memorandums (admin only)
 app.get('/api/admin/memorandums', async (req, res) => {
   try {
-    const memorandums = await Memorandum.find().populate('createdBy', 'name email').sort({ uploadedAt: -1 });
-    res.status(200).json(memorandums);
+    const memorandums = await Memorandum.find().populate('createdBy').populate('priorityEditor').populate('editedBy').sort({ uploadedAt: -1 });
+    res.json(memorandums);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Approve or reject memorandum (admin only)
+// Approve/reject memorandum (admin only)
 app.put('/api/admin/memorandums/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'approved' or 'rejected'
+    const { status } = req.body;
 
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-
-    const memorandum = await Memorandum.findByIdAndUpdate(id, { status }, { new: true });
+    const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
       return res.status(404).json({ message: 'Memorandum not found' });
     }
 
-    // Log admin action - we'll use a special admin user ID for system actions
+    memorandum.status = status;
+    await memorandum.save();
+
+    // Log admin action
     await logActivity('system_admin', 'memorandum_approve', `Memorandum "${memorandum.title}" ${status}`, { 
       memorandumId: id, 
-      status, 
-      title: memorandum.title 
+      title: memorandum.title, 
+      status 
     }, req);
 
-    res.status(200).json({ message: `Memorandum ${status}`, memorandum });
+    res.json({ message: `Memorandum ${status} successfully`, memorandum });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -314,25 +376,28 @@ app.put('/api/admin/memorandums/:id', async (req, res) => {
 app.delete('/api/admin/memorandums/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const memorandum = await Memorandum.findByIdAndDelete(id);
+    const memorandum = await Memorandum.findById(id);
+    
     if (!memorandum) {
       return res.status(404).json({ message: 'Memorandum not found' });
     }
-    
-    // Log admin action - we'll use a special admin user ID for system actions
-    await logActivity('system_admin', 'memorandum_delete', `Memorandum "${memorandum.title}" deleted`, { 
+
+    await Memorandum.findByIdAndDelete(id);
+
+    // Log admin deletion
+    await logActivity('system_admin', 'memorandum_delete', `Memorandum deleted: "${memorandum.title}"`, { 
       memorandumId: id, 
       title: memorandum.title 
     }, req);
-    
-    res.status(200).json({ message: 'Memorandum deleted successfully' });
+
+    res.json({ message: 'Memorandum deleted successfully' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Upload memorandum draft (president only)
+// Upload memorandum (president only)
 app.post('/api/memorandums', async (req, res) => {
   try {
     const { title, year, fileUrl, userId } = req.body;
@@ -359,25 +424,82 @@ app.post('/api/memorandums', async (req, res) => {
   }
 });
 
-// Update memorandum (president only)
+// Set priority editor for memorandum (president only)
+app.post('/api/memorandums/:id/priority', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can set edit priority' });
+    }
+
+    const memorandum = await Memorandum.findById(id);
+    if (!memorandum) {
+      return res.status(404).json({ message: 'Memorandum not found' });
+    }
+
+    // Any president can edit any memorandum
+
+    // Set priority editor if not already set
+    if (!memorandum.priorityEditor) {
+      memorandum.priorityEditor = userId;
+      memorandum.priorityEditStartedAt = new Date();
+      await memorandum.save();
+      
+      res.status(200).json({ 
+        message: 'You have edit priority', 
+        memorandum,
+        hasPriority: true
+      });
+    } else {
+      // Someone else already has priority
+      const priorityUser = await User.findById(memorandum.priorityEditor);
+      res.status(200).json({ 
+        message: 'Another user has edit priority', 
+        memorandum,
+        hasPriority: false,
+        priorityEditor: priorityUser ? priorityUser.name : 'Unknown',
+        priorityEditStartedAt: memorandum.priorityEditStartedAt
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update memorandum (president only) - only priority editor can save
 app.put('/api/memorandums/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, year, fileUrl, userId } = req.body;
+    const { title, year, fileUrl, userId, version } = req.body;
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
       return res.status(403).json({ message: 'Only presidents can update memorandum drafts' });
     }
 
-    // Find the memorandum and verify it belongs to this president
+    // Find the memorandum - any president can edit any memorandum
     const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
       return res.status(404).json({ message: 'Memorandum not found' });
     }
 
-    if (memorandum.createdBy.toString() !== userId) {
-      return res.status(403).json({ message: 'You can only edit your own memorandums' });
+    // Any president can edit any memorandum
+
+    // Check if user has edit priority
+    if (!memorandum.priorityEditor || memorandum.priorityEditor.toString() !== userId) {
+      return res.status(409).json({ 
+        message: 'You do not have edit priority. Only the first user to click edit can save changes.',
+        hasPriority: false
+      });
+    }
+
+    // Check version for concurrency control
+    if (memorandum.version !== version) {
+      return res.status(409).json({ message: 'Document has been modified. Please refresh and try again.' });
     }
 
     // Update memorandum and reset status to 'draft' for admin approval
@@ -385,6 +507,11 @@ app.put('/api/memorandums/:id', async (req, res) => {
     memorandum.year = year;
     memorandum.fileUrl = fileUrl;
     memorandum.status = 'draft';
+    memorandum.version = memorandum.version + 1;
+    memorandum.editedBy = userId; // Track who edited
+    memorandum.editedAt = new Date(); // Track when edited
+    memorandum.priorityEditor = null; // Clear priority after successful save
+    memorandum.priorityEditStartedAt = null;
     await memorandum.save();
 
     // Log president action
@@ -401,80 +528,7 @@ app.put('/api/memorandums/:id', async (req, res) => {
   }
 });
 
-// Get all handbook pages (public, approved only)
-app.get('/api/handbook', async (req, res) => {
-  try {
-    const handbook = await Handbook.find({ status: 'approved' }).sort({ createdAt: -1 });
-    res.status(200).json(handbook);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get all handbook drafts (for admin)
-app.get('/api/admin/handbook', async (req, res) => {
-  try {
-    const handbook = await Handbook.find().populate('createdBy', 'name email').sort({ createdAt: -1 });
-    res.status(200).json(handbook);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Approve or reject handbook page (admin only)
-app.put('/api/admin/handbook/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body; // 'approved' or 'rejected'
-
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-
-    const handbook = await Handbook.findByIdAndUpdate(id, { status }, { new: true });
-    if (!handbook) {
-      return res.status(404).json({ message: 'Handbook page not found' });
-    }
-
-    // Log admin action - we'll use a special admin user ID for system actions
-    await logActivity('system_admin', 'handbook_approve', `Handbook "${handbook.title}" ${status}`, { 
-      handbookId: id, 
-      status, 
-      title: handbook.title 
-    }, req);
-
-    res.status(200).json({ message: `Handbook page ${status}`, handbook });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Delete handbook page (admin only)
-app.delete('/api/admin/handbook/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const handbook = await Handbook.findByIdAndDelete(id);
-    if (!handbook) {
-      return res.status(404).json({ message: 'Handbook page not found' });
-    }
-    
-    // Log admin action - we'll use a special admin user ID for system actions
-    await logActivity('system_admin', 'handbook_delete', `Handbook "${handbook.title}" deleted`, { 
-      handbookId: id, 
-      title: handbook.title 
-    }, req);
-    
-    res.status(200).json({ message: 'Handbook page deleted successfully' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Create handbook page draft (president only)
+// Create handbook page (president only)
 app.post('/api/handbook', async (req, res) => {
   try {
     const { title, content, userId } = req.body;
@@ -500,25 +554,82 @@ app.post('/api/handbook', async (req, res) => {
   }
 });
 
-// Update handbook page (president only)
+// Set priority editor for handbook (president only)
+app.post('/api/handbook/:id/priority', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can set edit priority' });
+    }
+
+    const handbook = await Handbook.findById(id);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    // Any president can edit any handbook
+
+    // Set priority editor if not already set
+    if (!handbook.priorityEditor) {
+      handbook.priorityEditor = userId;
+      handbook.priorityEditStartedAt = new Date();
+      await handbook.save();
+      
+      res.status(200).json({ 
+        message: 'You have edit priority', 
+        handbook,
+        hasPriority: true
+      });
+    } else {
+      // Someone else already has priority
+      const priorityUser = await User.findById(handbook.priorityEditor);
+      res.status(200).json({ 
+        message: 'Another user has edit priority', 
+        handbook,
+        hasPriority: false,
+        priorityEditor: priorityUser ? priorityUser.name : 'Unknown',
+        priorityEditStartedAt: handbook.priorityEditStartedAt
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update handbook page (president only) - only priority editor can save
 app.put('/api/handbook/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, userId } = req.body;
+    const { title, content, userId, version } = req.body;
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
       return res.status(403).json({ message: 'Only presidents can update handbook drafts' });
     }
 
-    // Find the handbook and verify it belongs to this president
+    // Find the handbook - any president can edit any handbook
     const handbook = await Handbook.findById(id);
     if (!handbook) {
       return res.status(404).json({ message: 'Handbook not found' });
     }
 
-    if (handbook.createdBy.toString() !== userId) {
-      return res.status(403).json({ message: 'You can only edit your own handbooks' });
+    // Any president can edit any handbook
+
+    // Check if user has edit priority
+    if (!handbook.priorityEditor || handbook.priorityEditor.toString() !== userId) {
+      return res.status(409).json({ 
+        message: 'You do not have edit priority. Only the first user to click edit can save changes.',
+        hasPriority: false
+      });
+    }
+
+    // Check version for concurrency control
+    if (handbook.version !== version) {
+      return res.status(409).json({ message: 'Document has been modified. Please refresh and try again.' });
     }
 
     // Update handbook and reset status to 'draft' for admin approval
@@ -526,6 +637,11 @@ app.put('/api/handbook/:id', async (req, res) => {
     handbook.content = content;
     handbook.status = 'draft';
     handbook.updatedAt = Date.now();
+    handbook.version = handbook.version + 1;
+    handbook.editedBy = userId; // Track who edited
+    handbook.editedAt = new Date(); // Track when edited
+    handbook.priorityEditor = null; // Clear priority after successful save
+    handbook.priorityEditStartedAt = null;
     await handbook.save();
 
     // Log president action
@@ -541,345 +657,22 @@ app.put('/api/handbook/:id', async (req, res) => {
   }
 });
 
-// Test endpoint to verify the fix is working
-app.get('/api/admin/test-fix', async (req, res) => {
+// Get all handbook pages (public, approved only)
+app.get('/api/handbook', async (req, res) => {
   try {
-    const testEmail = '2301102187@student.buksu.edu.ph';
-    console.log('Testing fix for email:', testEmail);
-    
-    const existingUser = await User.findOne({ email: testEmail });
-    if (existingUser) {
-      res.status(200).json({ 
-        message: 'Fix is working - user found', 
-        user: {
-          email: existingUser.email,
-          role: existingUser.role,
-          name: existingUser.name
-        }
-      });
-    } else {
-      res.status(404).json({ message: 'User not found' });
-    }
-  } catch (error) {
-    console.error('Test error:', error);
-    res.status(500).json({ message: 'Server error', details: error.message });
-  }
-});
-
-// Add president email (admin only)
-app.post('/api/admin/add-president', async (req, res) => {
-  try {
-    const { email } = req.body;
-    console.log('Add president request:', { email });
-
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ message: 'Valid email required' });
-    }
-
-    // Check if email already exists in database
-    console.log('Checking for existing user with email:', email);
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      console.log('User already exists:', {
-        _id: existingUser._id,
-        email: existingUser.email,
-        role: existingUser.role,
-        googleId: existingUser.googleId,
-        name: existingUser.name
-      });
-      
-      // If user exists and is already a president, return success
-      if (existingUser.role === 'president') {
-        return res.status(200).json({ 
-          message: 'User is already a president', 
-          user: existingUser 
-        });
-      }
-      
-      // If user exists but is not a president, update their role
-      const oldRole = existingUser.role;
-      console.log(`Updating existing user ${email} from ${oldRole} to president`);
-      existingUser.role = 'president';
-      await existingUser.save();
-      
-      // Remove from adminEmails if present
-      const adminIndex = adminEmails.indexOf(email);
-      if (adminIndex > -1) {
-        adminEmails.splice(adminIndex, 1);
-        console.log('Removed from adminEmails array:', email);
-      }
-      
-      // Add to presidentEmails array if not already there
-      if (!presidentEmails.includes(email)) {
-        presidentEmails.push(email);
-        console.log('Added to presidentEmails array:', email);
-      }
-      
-      return res.status(200).json({ 
-        message: `User role updated from ${oldRole} to president`, 
-        user: existingUser 
-      });
-    }
-
-    // Create new president user in database
-    console.log('Creating new president user...');
-    const newPresident = new User({
-      email,
-      role: 'president',
-      googleId: undefined  // Explicitly set to undefined to avoid null conflict
-    });
-    
-    console.log('Saving user to database...');
-    await newPresident.save();
-    console.log('User saved successfully:', newPresident);
-
-    // Remove from adminEmails if present
-    const adminIndex = adminEmails.indexOf(email);
-    if (adminIndex > -1) {
-      adminEmails.splice(adminIndex, 1);
-      console.log('Removed from adminEmails array:', email);
-    }
-
-    if (!presidentEmails.includes(email)) {
-      presidentEmails.push(email);
-      console.log('Added to presidentEmails array:', email);
-    }
-
-    res.status(200).json({ message: 'President email added successfully', user: newPresident });
-  } catch (error) {
-    console.error('Error in add-president endpoint:', error);
-    console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack
-    });
-    res.status(500).json({ message: 'Server error', details: error.message });
-  }
-});
-
-// Cleanup duplicate googleId entries and fix index (admin only)
-app.post('/api/admin/cleanup-duplicates', async (req, res) => {
-  try {
-    console.log('Cleaning up duplicate googleId entries...');
-    
-    // Drop the problematic googleId index
-    try {
-      await User.collection.dropIndex('googleId_1');
-      console.log('Dropped googleId_1 index');
-    } catch (indexError) {
-      console.log('Index might not exist or already dropped:', indexError.message);
-    }
-    
-    // Find all users with null googleId
-    const usersWithNullGoogleId = await User.find({ googleId: null });
-    console.log('Found users with null googleId:', usersWithNullGoogleId.length);
-    
-    // Remove all but the first one
-    if (usersWithNullGoogleId.length > 1) {
-      const idsToDelete = usersWithNullGoogleId.slice(1).map(user => user._id);
-      await User.deleteMany({ _id: { $in: idsToDelete } });
-      console.log('Deleted duplicate users:', idsToDelete.length);
-    }
-    
-    // Recreate the index with proper sparse configuration
-    try {
-      await User.collection.createIndex({ googleId: 1 }, { sparse: true, unique: true });
-      console.log('Recreated googleId index with sparse: true, unique: true');
-    } catch (indexError) {
-      console.log('Error recreating index:', indexError.message);
-    }
-    
-    res.status(200).json({ 
-      message: 'Cleanup completed', 
-      deleted: usersWithNullGoogleId.length > 1 ? usersWithNullGoogleId.length - 1 : 0 
-    });
-  } catch (error) {
-    console.error('Error in cleanup:', error);
-    res.status(500).json({ message: 'Server error', details: error.message });
-  }
-});
-
-// Update user role (admin only) - TEMPORARY DEBUG ENDPOINT
-app.post('/api/admin/update-user-role', async (req, res) => {
-  try {
-    const { email, newRole } = req.body;
-    console.log('Update user role request:', { email, newRole });
-
-    if (!email || !newRole) {
-      return res.status(400).json({ message: 'Email and new role are required' });
-    }
-
-    console.log('Looking for user with email:', email);
-    const user = await User.findOne({ email });
-    if (!user) {
-      console.log('User not found:', email);
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    console.log('Found user:', {
-      email: user.email,
-      currentRole: user.role,
-      name: user.name
-    });
-
-    const oldRole = user.role;
-    user.role = newRole;
-    
-    console.log('Saving user with new role...');
-    await user.save();
-    console.log('User saved successfully');
-
-    console.log(`Updated user ${email} from ${oldRole} to ${newRole}`);
-
-    res.status(200).json({ 
-      message: `User role updated from ${oldRole} to ${newRole}`,
-      user: {
-        email: user.email,
-        role: user.role,
-        name: user.name
-      }
-    });
-  } catch (error) {
-    console.error('Error updating user role:', error);
-    console.error('Error details:', {
-      message: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack
-    });
-    res.status(500).json({ message: 'Server error', details: error.message });
-  }
-});
-
-// Debug endpoint to list all users (admin only) - TEMPORARY
-app.get('/api/admin/debug-users', async (req, res) => {
-  try {
-    const allUsers = await User.find({});
-    const userSummary = allUsers.map(user => ({
-      _id: user._id,
-      email: user.email,
-      role: user.role,
-      googleId: user.googleId,
-      name: user.name,
-      username: user.username
-    }));
-    
-    res.status(200).json({ 
-      message: 'All users retrieved', 
-      count: allUsers.length,
-      users: userSummary 
-    });
-  } catch (error) {
-    console.error('Error retrieving users:', error);
-    res.status(500).json({ message: 'Server error', details: error.message });
-  }
-});
-
-// Add manual admin account (admin only)
-app.post('/api/admin/add-admin', async (req, res) => {
-  try {
-    const { username, password, name, email } = req.body;
-
-    console.log('Creating admin account:', { username, name, email, password: '***' });
-
-    if (!username || !password || !name || !email) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
-
-    // Check if username already exists in database
-    const existingUser = await User.findOne({ username });
-    if (existingUser) {
-      console.log('Username already exists:', username);
-      return res.status(400).json({ message: 'Username already exists' });
-    }
-
-    // Create new admin user in database
-    const newAdmin = new User({
-      username,
-      password, // In production, hash the password
-      name,
-      email,
-      role: 'admin'
-    });
-    await newAdmin.save();
-
-    console.log('Admin account created successfully:', newAdmin._id);
-
-    // Add the email to adminEmails array for password reset
-    if (!adminEmails.includes(email)) {
-      adminEmails.push(email);
-    }
-
-    // Log admin action - we'll use a special admin user ID for system actions
-    await logActivity('system_admin', 'user_create', `Admin account created for ${email}`, { 
-      newUserId: newAdmin._id, 
-      email, 
-      username 
-    }, req);
-
-    res.status(201).json({ message: 'Admin account created successfully', user: newAdmin });
-  } catch (error) {
-    console.error('Error creating admin account:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get all users (admin only)
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    const users = await User.find().select('-password').sort({ createdAt: -1 });
-    res.status(200).json(users);
+    const handbook = await Handbook.find({ status: 'approved' }).sort({ createdAt: -1 });
+    res.json(handbook);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Debug endpoint to check admin users (temporary)
-app.get('/api/debug/admin-users', async (req, res) => {
+// Get all memorandums (public, approved only)
+app.get('/api/memorandums', async (req, res) => {
   try {
-    const adminUsers = await User.find({ role: 'admin' }).select('username name email role createdAt');
-    console.log('Admin users in database:', adminUsers);
-    res.status(200).json(adminUsers);
-  } catch (error) {
-    console.error('Debug error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Debug endpoint to check specific admin user with password (temporary)
-app.get('/api/debug/admin-user/:username', async (req, res) => {
-  try {
-    const { username } = req.params;
-    const user = await User.findOne({ username, role: 'admin' });
-    console.log('Admin user details:', user);
-    res.status(200).json(user);
-  } catch (error) {
-    console.error('Debug error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Delete user (admin only)
-app.delete('/api/admin/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: 'Invalid user ID' });
-    }
-    const user = await User.findByIdAndDelete(id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    // Log admin action - we'll use a special admin user ID for system actions
-    await logActivity('system_admin', 'user_delete', `User ${user.email} deleted`, { 
-      deletedUserId: id, 
-      email: user.email 
-    }, req);
-    
-    res.status(200).json({ message: 'User deleted successfully' });
+    const memorandums = await Memorandum.find({ status: 'approved' }).sort({ uploadedAt: -1 });
+    res.json(memorandums);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -892,8 +685,8 @@ app.get('/api/admin/activity-logs', async (req, res) => {
     const logs = await ActivityLog.find()
       .populate('user', 'name email role')
       .sort({ timestamp: -1 })
-      .limit(1000); // Limit to prevent performance issues
-    res.status(200).json(logs);
+      .limit(1000);
+    res.json(logs);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -906,21 +699,150 @@ app.get('/api/president/activity-logs', async (req, res) => {
     const { userId } = req.query;
     
     if (!userId) {
-      return res.status(400).json({ message: 'User ID required' });
+      return res.status(400).json({ message: 'User ID is required' });
     }
-    
+
     const logs = await ActivityLog.find({ user: userId })
       .populate('user', 'name email role')
       .sort({ timestamp: -1 })
       .limit(500);
-    res.status(200).json(logs);
+    res.json(logs);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-app.listen(PORT, () => {
-    console.log("Server started on port", PORT);
+// Clear priority editor for handbook (president only)
+app.post('/api/handbook/:id/clear-priority', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can clear edit priority' });
+    }
+
+    const handbook = await Handbook.findById(id);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    // Clear priority if this user has it
+    if (handbook.priorityEditor && handbook.priorityEditor.toString() === userId) {
+      handbook.priorityEditor = null;
+      handbook.priorityEditStartedAt = null;
+      await handbook.save();
+    }
+
+    res.status(200).json({ message: 'Priority cleared' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
+// Clear priority editor for memorandum (president only)
+app.post('/api/memorandums/:id/clear-priority', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can clear edit priority' });
+    }
+
+    const memorandum = await Memorandum.findById(id);
+    if (!memorandum) {
+      return res.status(404).json({ message: 'Memorandum not found' });
+    }
+
+    // Clear priority if this user has it
+    if (memorandum.priorityEditor && memorandum.priorityEditor.toString() === userId) {
+      memorandum.priorityEditor = null;
+      memorandum.priorityEditStartedAt = null;
+      await memorandum.save();
+    }
+
+    res.status(200).json({ message: 'Priority cleared' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Cleanup expired priorities (run every 10 minutes)
+setInterval(async () => {
+  try {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    
+    // Clear expired handbook priorities
+    await Handbook.updateMany(
+      { 
+        priorityEditor: { $exists: true, $ne: null },
+        priorityEditStartedAt: { $lt: tenMinutesAgo } 
+      },
+      { 
+        $set: { 
+          priorityEditor: null, 
+          priorityEditStartedAt: null 
+        } 
+      }
+    );
+    
+    // Clear expired memorandum priorities
+    await Memorandum.updateMany(
+      { 
+        priorityEditor: { $exists: true, $ne: null },
+        priorityEditStartedAt: { $lt: tenMinutesAgo } 
+      },
+      { 
+        $set: { 
+          priorityEditor: null, 
+          priorityEditStartedAt: null 
+        } 
+      }
+    );
+  } catch (error) {
+    console.error('Error cleaning up expired priorities:', error);
+  }
+}, 10 * 60 * 1000); // Run every 10 minutes
+
+// Add reset password endpoint to actually change password
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Token and new password are required' });
+    }
+
+    // Find user by reset token
+    const user = await User.findOne({ 
+      resetToken: token,
+      resetTokenExpiry: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired reset token' });
+    }
+
+    // Update password and clear reset token
+    user.password = newPassword;
+    user.resetToken = null;
+    user.resetTokenExpiry = null;
+    await user.save();
+
+    res.json({ message: 'Password has been reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ message: 'Failed to reset password' });
+  }
+});
+
+app.listen(PORT, () => {
+    console.log("Server started on port", PORT);
+    console.log(`Server is running at http://localhost:${PORT}`);
+});

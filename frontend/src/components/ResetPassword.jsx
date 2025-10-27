@@ -1,31 +1,50 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 function ResetPassword() {
-  const [code, setCode] = useState('');
+  const [searchParams] = useSearchParams();
+  const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Get token from URL parameters
+    const tokenFromUrl = searchParams.get('token');
+    if (tokenFromUrl) {
+      setToken(tokenFromUrl);
+    }
+  }, [searchParams]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!token) {
+      setMessage('Invalid reset link. Please request a new password reset.');
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       setMessage('Passwords do not match');
       return;
     }
 
+    if (newPassword.length < 6) {
+      setMessage('Password must be at least 6 characters long');
+      return;
+    }
+
     const response = await fetch('http://localhost:5001/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, newPassword })
+      body: JSON.stringify({ token, newPassword })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      setMessage('Password reset successfully!');
+      setMessage('Password reset successfully! Redirecting to login...');
       setTimeout(() => navigate('/login'), 2000);
     } else {
       setMessage(data.message || 'Failed to reset password');
@@ -38,19 +57,11 @@ function ResetPassword() {
         <div className="card-body">
           <h2 className="card-title">Reset Password</h2>
           <form onSubmit={handleSubmit}>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Reset Code</span>
-              </label>
-              <input
-                type="text"
-                placeholder="Enter 6-digit code"
-                className="input input-bordered"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                required
-              />
-            </div>
+            {!token && (
+              <div className="alert alert-warning mb-4">
+                <span>Invalid reset link. Please request a new password reset.</span>
+              </div>
+            )}
             <div className="form-control">
               <label className="label">
                 <span className="label-text">New Password</span>
@@ -62,6 +73,7 @@ function ResetPassword() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
+                disabled={!token}
               />
             </div>
             <div className="form-control">
@@ -75,10 +87,13 @@ function ResetPassword() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                disabled={!token}
               />
             </div>
             <div className="form-control mt-4">
-              <button type="submit" className="btn btn-primary">Reset Password</button>
+              <button type="submit" className="btn btn-primary" disabled={!token}>
+                Reset Password
+              </button>
             </div>
           </form>
           {message && <p className="text-center mt-4">{message}</p>}
