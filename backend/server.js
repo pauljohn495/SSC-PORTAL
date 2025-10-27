@@ -12,7 +12,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
-import { User, Handbook, Memorandum } from "./src/database/db.js";
+import { User, Handbook, Memorandum, ActivityLog } from "./src/database/db.js";
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -22,6 +22,46 @@ let adminEmails = ['admin@student.buksu.edu.ph'];
 
 // In-memory store for reset tokens (in production, use database)
 const resetTokens = new Map();
+
+// Helper function to log activities
+const logActivity = async (userId, action, description, details = null, req = null) => {
+  try {
+    let actualUserId = userId;
+    
+    // Handle special system admin actions
+    if (userId === 'system_admin' || userId === 'default_admin') {
+      // Create or find a system admin user for logging purposes
+      let systemAdmin = await User.findOne({ email: 'system@admin.buksu.edu.ph' });
+      if (!systemAdmin) {
+        systemAdmin = new User({
+          email: 'system@admin.buksu.edu.ph',
+          name: 'System Admin',
+          role: 'admin'
+        });
+        await systemAdmin.save();
+      }
+      actualUserId = systemAdmin._id;
+    }
+    
+    const logData = {
+      user: actualUserId,
+      action,
+      description,
+      details,
+      timestamp: new Date()
+    };
+    
+    if (req) {
+      logData.ipAddress = req.ip || req.connection.remoteAddress;
+      logData.userAgent = req.get('User-Agent');
+    }
+    
+    const activityLog = new ActivityLog(logData);
+    await activityLog.save();
+  } catch (error) {
+    console.error('Error logging activity:', error);
+  }
+};
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -84,6 +124,10 @@ app.post('/api/auth/google', async (req, res) => {
       
       await user.save();
     }
+    
+    // Log login activity
+    await logActivity(user._id, 'login', `User logged in via Google OAuth`, { email: user.email }, req);
+    
     res.status(200).json({ message: 'User authenticated', user });
   } catch (error) {
     console.error(error);
@@ -127,6 +171,8 @@ app.post('/api/auth/admin', async (req, res) => {
     
     if (user) {
       console.log('Admin authenticated successfully:', user.name);
+      // Log admin login activity
+      await logActivity(user._id, 'login', `Admin logged in manually`, { username: username }, req);
       res.status(200).json({ message: 'Admin authenticated', user });
       return;
     }
@@ -140,6 +186,8 @@ app.post('/api/auth/admin', async (req, res) => {
         role: 'admin',
         picture: '' // No picture for manual login
       };
+      // Log default admin login (we'll use a special ID for this)
+      await logActivity('default_admin', 'login', `Default admin logged in`, { username: username }, req);
       res.status(200).json({ message: 'Admin authenticated', user: defaultUser });
     } else {
       console.log('Invalid credentials provided');
@@ -248,6 +296,13 @@ app.put('/api/admin/memorandums/:id', async (req, res) => {
       return res.status(404).json({ message: 'Memorandum not found' });
     }
 
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'memorandum_approve', `Memorandum "${memorandum.title}" ${status}`, { 
+      memorandumId: id, 
+      status, 
+      title: memorandum.title 
+    }, req);
+
     res.status(200).json({ message: `Memorandum ${status}`, memorandum });
   } catch (error) {
     console.error(error);
@@ -263,6 +318,13 @@ app.delete('/api/admin/memorandums/:id', async (req, res) => {
     if (!memorandum) {
       return res.status(404).json({ message: 'Memorandum not found' });
     }
+    
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'memorandum_delete', `Memorandum "${memorandum.title}" deleted`, { 
+      memorandumId: id, 
+      title: memorandum.title 
+    }, req);
+    
     res.status(200).json({ message: 'Memorandum deleted successfully' });
   } catch (error) {
     console.error(error);
@@ -283,7 +345,56 @@ app.post('/api/memorandums', async (req, res) => {
     const memorandum = new Memorandum({ title, year, fileUrl, createdBy: userId });
     await memorandum.save();
 
+    // Log president action
+    await logActivity(userId, 'memorandum_upload', `Memorandum "${title}" uploaded`, { 
+      memorandumId: memorandum._id, 
+      title, 
+      year 
+    }, req);
+
     res.status(201).json({ message: 'Memorandum draft uploaded', memorandum });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update memorandum (president only)
+app.put('/api/memorandums/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, year, fileUrl, userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can update memorandum drafts' });
+    }
+
+    // Find the memorandum and verify it belongs to this president
+    const memorandum = await Memorandum.findById(id);
+    if (!memorandum) {
+      return res.status(404).json({ message: 'Memorandum not found' });
+    }
+
+    if (memorandum.createdBy.toString() !== userId) {
+      return res.status(403).json({ message: 'You can only edit your own memorandums' });
+    }
+
+    // Update memorandum and reset status to 'draft' for admin approval
+    memorandum.title = title;
+    memorandum.year = year;
+    memorandum.fileUrl = fileUrl;
+    memorandum.status = 'draft';
+    await memorandum.save();
+
+    // Log president action
+    await logActivity(userId, 'memorandum_update', `Memorandum "${memorandum.title}" updated`, { 
+      memorandumId: id, 
+      title: memorandum.title, 
+      year: memorandum.year 
+    }, req);
+
+    res.status(200).json({ message: 'Memorandum updated successfully', memorandum });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -327,6 +438,13 @@ app.put('/api/admin/handbook/:id', async (req, res) => {
       return res.status(404).json({ message: 'Handbook page not found' });
     }
 
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'handbook_approve', `Handbook "${handbook.title}" ${status}`, { 
+      handbookId: id, 
+      status, 
+      title: handbook.title 
+    }, req);
+
     res.status(200).json({ message: `Handbook page ${status}`, handbook });
   } catch (error) {
     console.error(error);
@@ -342,6 +460,13 @@ app.delete('/api/admin/handbook/:id', async (req, res) => {
     if (!handbook) {
       return res.status(404).json({ message: 'Handbook page not found' });
     }
+    
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'handbook_delete', `Handbook "${handbook.title}" deleted`, { 
+      handbookId: id, 
+      title: handbook.title 
+    }, req);
+    
     res.status(200).json({ message: 'Handbook page deleted successfully' });
   } catch (error) {
     console.error(error);
@@ -362,7 +487,54 @@ app.post('/api/handbook', async (req, res) => {
     const handbook = new Handbook({ title, content, createdBy: userId });
     await handbook.save();
 
+    // Log president action
+    await logActivity(userId, 'handbook_create', `Handbook page "${title}" created`, { 
+      handbookId: handbook._id, 
+      title 
+    }, req);
+
     res.status(201).json({ message: 'Handbook draft created', handbook });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update handbook page (president only)
+app.put('/api/handbook/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, content, userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can update handbook drafts' });
+    }
+
+    // Find the handbook and verify it belongs to this president
+    const handbook = await Handbook.findById(id);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    if (handbook.createdBy.toString() !== userId) {
+      return res.status(403).json({ message: 'You can only edit your own handbooks' });
+    }
+
+    // Update handbook and reset status to 'draft' for admin approval
+    handbook.title = title;
+    handbook.content = content;
+    handbook.status = 'draft';
+    handbook.updatedAt = Date.now();
+    await handbook.save();
+
+    // Log president action
+    await logActivity(userId, 'handbook_update', `Handbook page "${handbook.title}" updated`, { 
+      handbookId: id, 
+      title: handbook.title 
+    }, req);
+
+    res.status(200).json({ message: 'Handbook updated successfully', handbook });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
@@ -639,6 +811,13 @@ app.post('/api/admin/add-admin', async (req, res) => {
       adminEmails.push(email);
     }
 
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'user_create', `Admin account created for ${email}`, { 
+      newUserId: newAdmin._id, 
+      email, 
+      username 
+    }, req);
+
     res.status(201).json({ message: 'Admin account created successfully', user: newAdmin });
   } catch (error) {
     console.error('Error creating admin account:', error);
@@ -693,7 +872,48 @@ app.delete('/api/admin/users/:id', async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
+    
+    // Log admin action - we'll use a special admin user ID for system actions
+    await logActivity('system_admin', 'user_delete', `User ${user.email} deleted`, { 
+      deletedUserId: id, 
+      email: user.email 
+    }, req);
+    
     res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get activity logs (admin only)
+app.get('/api/admin/activity-logs', async (req, res) => {
+  try {
+    const logs = await ActivityLog.find()
+      .populate('user', 'name email role')
+      .sort({ timestamp: -1 })
+      .limit(1000); // Limit to prevent performance issues
+    res.status(200).json(logs);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get user-specific activity logs (president only)
+app.get('/api/president/activity-logs', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID required' });
+    }
+    
+    const logs = await ActivityLog.find({ user: userId })
+      .populate('user', 'name email role')
+      .sort({ timestamp: -1 })
+      .limit(500);
+    res.status(200).json(logs);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });

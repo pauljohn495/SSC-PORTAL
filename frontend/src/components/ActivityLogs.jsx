@@ -51,33 +51,27 @@ const ActivityLogs = () => {
   };
 
   const getActionColor = (action) => {
-    switch (action) {
-      case 'login':
-        return 'text-blue-600';
-      case 'handbook':
-        return 'text-green-600';
-      case 'memorandum':
-        return 'text-purple-600';
-      case 'user_management':
-        return 'text-orange-600';
-      default:
-        return 'text-gray-600';
-    }
+    if (action.includes('login')) return 'text-blue-600';
+    if (action.includes('handbook')) return 'text-green-600';
+    if (action.includes('memorandum')) return 'text-purple-600';
+    if (action.includes('user') || action.includes('admin')) return 'text-orange-600';
+    return 'text-gray-600';
   };
 
   const getActionIcon = (action) => {
-    switch (action) {
-      case 'login':
-        return '🔐';
-      case 'handbook':
-        return '📚';
-      case 'memorandum':
-        return '📄';
-      case 'user_management':
-        return '👥';
-      default:
-        return '📝';
-    }
+    if (action.includes('login')) return '🔐';
+    if (action.includes('handbook')) return '📚';
+    if (action.includes('memorandum')) return '📄';
+    if (action.includes('user') || action.includes('admin')) return '👥';
+    return '📝';
+  };
+
+  const getActionBadgeColor = (action) => {
+    if (action.includes('login')) return 'bg-blue-100 text-blue-800';
+    if (action.includes('handbook')) return 'bg-green-100 text-green-800';
+    if (action.includes('memorandum')) return 'bg-purple-100 text-purple-800';
+    if (action.includes('user') || action.includes('admin')) return 'bg-orange-100 text-orange-800';
+    return 'bg-gray-100 text-gray-800';
   };
 
   return (
@@ -107,7 +101,18 @@ const ActivityLogs = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
-          <h1 className='text-3xl font-bold mb-8 text-blue-950'>Activity Logs</h1>
+          <div className='flex justify-between items-center mb-8'>
+            <h1 className='text-3xl font-bold text-blue-950'>Activity Logs</h1>
+            <button
+              onClick={fetchLogs}
+              className='bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center space-x-2'
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
 
           {loading ? (
             <div className='text-center py-8'>
@@ -117,27 +122,43 @@ const ActivityLogs = () => {
             <div className='bg-white rounded-lg shadow-md'>
               {logs.length > 0 ? (
                 <div>
+                  {/* Header */}
+                  <div className='flex items-center border-b border-gray-200 bg-gray-50 rounded-t-lg px-6 py-3'>
+                    <div className='flex-1 font-semibold text-gray-700'>Activity</div>
+                    <div className='w-32 font-semibold text-gray-700'>User</div>
+                    <div className='w-32 font-semibold text-gray-700'>Time Ago</div>
+                    <div className='w-48 font-semibold text-gray-700'>Date</div>
+                  </div>
+                  
                   {logs.map((log, index) => {
                     const timeAgo = getTimeAgo(log.timestamp);
                     const formattedDate = formatDate(log.timestamp);
+                    const userName = log.user ? `${log.user.name} (${log.user.email})` : 'System';
+                    const userRole = log.user ? log.user.role : 'system';
                     
                     return (
-                      <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                      <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                         <div className='flex-1 px-6 py-4'>
-                          <p className='text-gray-800 font-medium'>
-                            {log.action.charAt(0).toUpperCase() + log.action.slice(1).replace('_', ' ')} - {log.description}
-                          </p>
+                          <div className='flex items-center space-x-3'>
+                            <span className='text-lg'>{getActionIcon(log.action)}</span>
+                            <div>
+                              <div className='flex items-center space-x-2'>
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(log.action)}`}>
+                                  {log.action.replace('_', ' ').toUpperCase()}
+                                </span>
+                              </div>
+                              <p className='text-gray-800 font-medium mt-1'>{log.description}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className='w-32 px-6 py-4'>
+                          <div className='text-sm'>
+                            <p className='font-medium text-gray-800'>{log.user ? log.user.name : 'System'}</p>
+                            <p className='text-xs text-gray-500'>{userRole}</p>
+                          </div>
                         </div>
                         <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
                         <div className='w-48 px-6 py-4 text-sm text-gray-600'>{formattedDate}</div>
-                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>None</div>
-                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
-                          <button className='text-blue-600 hover:text-blue-800 transition-colors'>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                          </button>
-                        </div>
                       </div>
                     );
                   })}
