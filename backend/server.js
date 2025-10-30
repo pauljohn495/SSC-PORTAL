@@ -13,13 +13,11 @@ const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // MongoDB connection
-mongoose.connect('mongodb+srv://2301102187_db_user:V04dFoI1ZvOcjsdX@buksu.pdd0zsh.mongodb.net/buksu?retryWrites=true&w=majority&appName=BUKSU', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-}).then(() => {
+mongoose.connect('mongodb+srv://2301102187_db_user:V04dFoI1ZvOcjsdX@buksu.pdd0zsh.mongodb.net/buksu?retryWrites=true&w=majority&appName=BUKSU').then(() => {
   console.log('MongoDB connected successfully');
 }).catch((err) => {
   console.error('MongoDB connection error:', err);
@@ -132,14 +130,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const mailOptions = {
       from: process.env.EMAIL_USER || 'your-email@gmail.com',
       to: email,
-      subject: 'Password Reset Request - BUKSU IPT',
+      subject: 'Password Reset Request - BUKSU - SSC',
       html: `
         <h2>Password Reset Request</h2>
         <p>You requested a password reset for your admin account.</p>
         <p>Click the link below to reset your password:</p>
         <p><a href="${resetUrl}">${resetUrl}</a></p>
-        <p><strong>Or use this reset code: ${resetToken}</strong></p>
-        <p>This link will expire in 24 hours.</p>
         <p>If you didn't request this, please ignore this email.</p>
       `
     };
@@ -221,20 +217,21 @@ app.get('/api/admin/users', async (req, res) => {
 // Add admin user (admin only)
 app.post('/api/admin/add-admin', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, username } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    const admin = new User({ email, password, name, role: 'admin' });
+    const admin = new User({ email, password, name, username, role: 'admin' });
     await admin.save();
 
     // Log admin creation
-    await logActivity('system_admin', 'admin_create', `Admin account created for ${email}`, { 
-      adminEmail: email, 
-      adminName: name 
+    await logActivity('system_admin', 'admin_create', `Admin account created for ${email}`, {
+      adminEmail: email,
+      adminName: name,
+      adminUsername: username
     }, req);
 
     res.status(201).json({ message: 'Admin created successfully', admin });

@@ -1,0 +1,2 @@
+To Run backend type "cd backend; npm run dev"
+To Run Frontend type "cd frontend; npm run dev"
