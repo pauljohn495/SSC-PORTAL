@@ -20,17 +20,17 @@ const PresidentHandbook = () => {
   const [hasPriority, setHasPriority] = useState(false);
   const [priorityError, setPriorityError] = useState('');
 
-  if (!user || user.role !== 'president') {
-    return <div>Access Denied</div>;
-  }
+  const isAuthorized = !!user && user.role === 'president';
 
   useEffect(() => {
-    fetchHandbooks();
-  }, []);
+    if (isAuthorized) {
+      fetchHandbooks();
+    }
+  }, [isAuthorized]);
 
   const fetchHandbooks = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/admin/handbook');
+      const response = await fetch('/api/admin/handbook');
       const data = await response.json();
       // Show all handbooks created by any president
       setHandbooks(data);
@@ -53,7 +53,7 @@ const PresidentHandbook = () => {
     try {
       setSubmitting(true);
       
-      const response = await fetch('http://localhost:5001/api/handbook', {
+      const response = await fetch('/api/president/handbook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,7 +88,7 @@ const PresidentHandbook = () => {
   const handleEdit = async (handbook) => {
     try {
       // Try to get edit priority
-      const priorityResponse = await fetch(`http://localhost:5001/api/handbook/${handbook._id}/priority`, {
+      const priorityResponse = await fetch(`/api/president/handbook/${handbook._id}/priority`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user._id })
@@ -141,7 +141,7 @@ const PresidentHandbook = () => {
     try {
       setSubmitting(true);
       
-      const response = await fetch(`http://localhost:5001/api/handbook/${editingHandbook._id}`, {
+      const response = await fetch(`/api/president/handbook/${editingHandbook._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -179,7 +179,7 @@ const PresidentHandbook = () => {
     // Clear priority if we have it
     if (hasPriority && editingHandbook) {
       try {
-        await fetch(`http://localhost:5001/api/handbook/${editingHandbook._id}/clear-priority`, {
+        await fetch(`/api/president/handbook/${editingHandbook._id}/clear-priority`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user._id })
@@ -258,6 +258,10 @@ const PresidentHandbook = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
+          {!isAuthorized ? (
+            <div>Access Denied</div>
+          ) : (
+          <>
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Handbook Pages</h1>
             <button
@@ -332,6 +336,8 @@ const PresidentHandbook = () => {
               <div className='text-center py-12 text-gray-500'>No handbook pages yet. Click "Create Handbook" to add one.</div>
             )}
           </div>
+          </>
+          )}
         </div>
       </main>
 

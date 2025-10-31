@@ -2,23 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ActivityLogs = () => {
+const PresidentActivityLogs = () => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  if (!user || user.role !== 'admin') {
-    return <div>Access Denied</div>;
-  }
+  const isAuthorized = !!user && user.role === 'president';
 
   useEffect(() => {
-    fetchLogs();
-  }, []);
+    if (isAuthorized) {
+      fetchLogs();
+    }
+  }, [isAuthorized]);
 
   const fetchLogs = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/admin/activity-logs');
+      const response = await fetch(`http://localhost:5001/api/president/activity-logs?userId=${user._id}`);
       const data = await response.json();
       setLogs(data);
     } catch (error) {
@@ -90,10 +90,9 @@ const ActivityLogs = () => {
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/admin-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Manage User</Link></li>
-          <li><Link to="/activity-logs" className="block py-2 px-4 bg-blue-800 rounded transition">Activity Logs</Link></li>
+          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
+          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
+          <li><Link to="/president-activity-logs" className="block py-2 px-4 bg-blue-800 rounded transition">Activity Logs</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
@@ -101,6 +100,10 @@ const ActivityLogs = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
+          {!isAuthorized ? (
+            <div>Access Denied</div>
+          ) : (
+          <>
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Activity Logs</h1>
             <button
@@ -125,7 +128,6 @@ const ActivityLogs = () => {
                   {/* Header */}
                   <div className='flex items-center border-b border-gray-200 bg-gray-50 rounded-t-lg px-6 py-3'>
                     <div className='flex-1 font-semibold text-gray-700'>Activity</div>
-                    <div className='w-32 font-semibold text-gray-700'>User</div>
                     <div className='w-32 font-semibold text-gray-700'>Time Ago</div>
                     <div className='w-48 font-semibold text-gray-700'>Date</div>
                   </div>
@@ -133,8 +135,6 @@ const ActivityLogs = () => {
                   {logs.map((log, index) => {
                     const timeAgo = getTimeAgo(log.timestamp);
                     const formattedDate = formatDate(log.timestamp);
-                    const userName = log.user ? `${log.user.name} (${log.user.email})` : 'System';
-                    const userRole = log.user ? log.user.role : 'system';
                     
                     return (
                       <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
@@ -150,12 +150,6 @@ const ActivityLogs = () => {
                             </div>
                           </div>
                         </div>
-                        <div className='w-32 px-6 py-4'>
-                          <div className='text-sm'>
-                            <p className='font-medium text-gray-800'>{log.user ? log.user.name : 'System'}</p>
-                            <p className='text-xs text-gray-500'>{userRole}</p>
-                          </div>
-                        </div>
                         <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
                         <div className='w-48 px-6 py-4 text-sm text-gray-600'>{formattedDate}</div>
                       </div>
@@ -167,10 +161,13 @@ const ActivityLogs = () => {
               )}
             </div>
           )}
+          </>
+          )}
         </div>
       </main>
     </div>
   );
 };
 
-export default ActivityLogs;
+export default PresidentActivityLogs;
+

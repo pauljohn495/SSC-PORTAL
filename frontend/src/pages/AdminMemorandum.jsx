@@ -13,13 +13,13 @@ const AdminMemorandum = () => {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  if (!user || user.role !== 'admin') {
-    return <div>Access Denied</div>;
-  }
+  const isAuthorized = !!user && user.role === 'admin';
 
   useEffect(() => {
-    fetchDrafts();
-  }, []);
+    if (isAuthorized) {
+      fetchDrafts();
+    }
+  }, [isAuthorized]);
 
   const fetchDrafts = async () => {
     try {
@@ -80,7 +80,27 @@ const AdminMemorandum = () => {
   };
 
   const handleViewPDF = (fileUrl) => {
-    window.open(fileUrl, '_blank');
+    try {
+      if (fileUrl && fileUrl.startsWith('data:application/pdf')) {
+        const base64Index = fileUrl.indexOf('base64,');
+        if (base64Index !== -1) {
+          const base64 = fileUrl.substring(base64Index + 7);
+          const binaryString = atob(base64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const objectUrl = URL.createObjectURL(blob);
+          window.open(objectUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      console.error('Failed to open PDF:', e);
+    }
   };
 
   const handleLogout = () => {
@@ -128,9 +148,13 @@ const AdminMemorandum = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
+          {!isAuthorized ? (
+            <div>Access Denied</div>
+          ) : (
           <h1 className='text-3xl font-bold mb-8 text-blue-950'>Memorandum Drafts</h1>
+          )}
           
-          {loading ? (
+          {isAuthorized && (loading ? (
             <p>Loading...</p>
           ) : (
             <div className='bg-white rounded-lg shadow-md'>
@@ -207,7 +231,7 @@ const AdminMemorandum = () => {
                 <div className='text-center py-12 text-gray-500'>No memorandum drafts available.</div>
               )}
             </div>
-          )}
+          ))}
         </div>
       </main>
     </div>

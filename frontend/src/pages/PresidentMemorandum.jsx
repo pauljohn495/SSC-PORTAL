@@ -23,17 +23,17 @@ const PresidentMemorandum = () => {
   const [priorityError, setPriorityError] = useState('');
   const fileInputRef = useRef(null);
 
-  if (!user || user.role !== 'president') {
-    return <div>Access Denied</div>;
-  }
+  const isAuthorized = !!user && user.role === 'president';
 
   useEffect(() => {
-    fetchMemorandums();
-  }, []);
+    if (isAuthorized) {
+      fetchMemorandums();
+    }
+  }, [isAuthorized]);
 
   const fetchMemorandums = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/admin/memorandums');
+      const response = await fetch('/api/admin/memorandums');
       const data = await response.json();
       // Show all memorandums created by any president
       setMemorandums(data);
@@ -78,7 +78,7 @@ const PresidentMemorandum = () => {
       reader.onload = async () => {
         const base64File = reader.result;
         
-        const response = await fetch('http://localhost:5001/api/memorandums', {
+        const response = await fetch('/api/president/memorandums', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -127,7 +127,7 @@ const PresidentMemorandum = () => {
   const handleEdit = async (memorandum) => {
     try {
       // Try to get edit priority
-      const priorityResponse = await fetch(`http://localhost:5001/api/memorandums/${memorandum._id}/priority`, {
+      const priorityResponse = await fetch(`/api/president/memorandums/${memorandum._id}/priority`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user._id })
@@ -205,7 +205,7 @@ const PresidentMemorandum = () => {
         fileUrl = editingMemorandum.fileUrl;
       }
       
-      const response = await fetch(`http://localhost:5001/api/memorandums/${editingMemorandum._id}`, {
+      const response = await fetch(`/api/president/memorandums/${editingMemorandum._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,7 +245,7 @@ const PresidentMemorandum = () => {
     // Clear priority if we have it
     if (hasPriority && editingMemorandum) {
       try {
-        await fetch(`http://localhost:5001/api/memorandums/${editingMemorandum._id}/clear-priority`, {
+        await fetch(`/api/president/memorandums/${editingMemorandum._id}/clear-priority`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user._id })
@@ -329,6 +329,9 @@ const PresidentMemorandum = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
+          {!isAuthorized ? (
+            <div>Access Denied</div>
+          ) : (
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Memorandum</h1>
             <button
@@ -338,10 +341,11 @@ const PresidentMemorandum = () => {
               Create Memorandum
             </button>
           </div>
+          )}
 
           {/* Memorandum List */}
           <div className='bg-white rounded-lg shadow-md mb-8'>
-            {loading ? (
+            {!isAuthorized ? null : (loading ? (
               <div className='text-center py-12 text-gray-500'>Loading...</div>
             ) : memorandums.length > 0 ? (
               <div>
@@ -401,7 +405,7 @@ const PresidentMemorandum = () => {
               </div>
             ) : (
               <div className='text-center py-12 text-gray-500'>No memorandums yet. Click "Create Memorandum" to add one.</div>
-            )}
+            ))}
           </div>
         </div>
       </main>

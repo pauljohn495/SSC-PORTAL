@@ -15,7 +15,7 @@ const Memorandum = () => {
 
   const fetchMemorandums = async () => {
     try {
-      const response = await fetch('http://localhost:5001/api/memorandums')
+      const response = await fetch('/api/memorandums')
       const data = await response.json()
       setMemorandums(data)
     } catch (error) {
@@ -33,7 +33,28 @@ const Memorandum = () => {
   }
 
   const handleViewPDF = (fileUrl) => {
-    window.open(fileUrl, '_blank')
+    try {
+      if (fileUrl && fileUrl.startsWith('data:application/pdf')) {
+        const base64Index = fileUrl.indexOf('base64,');
+        if (base64Index !== -1) {
+          const base64 = fileUrl.substring(base64Index + 7);
+          const binaryString = atob(base64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const objectUrl = URL.createObjectURL(blob);
+          // Do NOT revoke the object URL immediately; keep it alive so the PDF loads fully
+          window.open(objectUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      console.error('Failed to open PDF:', e);
+    }
   }
 
   // Group memorandums by year

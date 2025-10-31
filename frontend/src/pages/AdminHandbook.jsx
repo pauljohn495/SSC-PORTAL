@@ -8,13 +8,13 @@ const AdminHandbook = () => {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  if (!user || user.role !== 'admin') {
-    return <div>Access Denied</div>;
-  }
+  const isAuthorized = !!user && user.role === 'admin';
 
   useEffect(() => {
-    fetchDrafts();
-  }, []);
+    if (isAuthorized) {
+      fetchDrafts();
+    }
+  }, [isAuthorized]);
 
   const fetchDrafts = async () => {
     try {
@@ -119,9 +119,13 @@ const AdminHandbook = () => {
       {/* Main Content */}
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-6xl mx-auto">
+          {!isAuthorized ? (
+            <div>Access Denied</div>
+          ) : (
           <h1 className='text-3xl font-bold mb-8 text-blue-950'>Handbook Drafts</h1>
+          )}
           
-          {loading ? (
+          {isAuthorized && (loading ? (
             <p>Loading...</p>
           ) : (
             <div className='bg-white rounded-lg shadow-md'>
@@ -188,7 +192,7 @@ const AdminHandbook = () => {
                 <div className='text-center py-12 text-gray-500'>No handbook drafts available.</div>
               )}
             </div>
-          )}
+          ))}
         </div>
       </main>
     </div>
