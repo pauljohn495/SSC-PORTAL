@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext'
 import buksublack from '../assets/buksu-black.png'
 import bgimage from '../assets/bg-image.jpg'
 import buksunew from '../assets/buksu-new.png'
-import NotificationIcon from '../components/NotificationIcon'
 const Home = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate = useNavigate()
@@ -82,7 +81,6 @@ const Home = () => {
               President Dashboard
             </button>
           )}
-          <NotificationIcon />
           {user && (
             <div className='relative'>
               <button

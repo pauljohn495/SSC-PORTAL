@@ -3,8 +3,6 @@ import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
 import { logActivity } from '../utils/activityLogger.js';
-import nodemailer from 'nodemailer';
-import { config } from '../config/index.js';
 
 // Get all users
 export const getUsers = async (req, res, next) => {
@@ -35,109 +33,7 @@ export const addAdmin = async (req, res, next) => {
       adminUsername: username
     }, req);
 
-    // Send email notification
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: config.email.user || 'your-email@gmail.com',
-          pass: config.email.pass || 'your-app-password'
-        }
-      });
-
-      const mailOptions = {
-        from: config.email.user || 'your-email@gmail.com',
-        to: email,
-        subject: 'Admin Account Created - BUKSU - SSC',
-        html: `
-          <h2>Welcome as Admin!</h2>
-          <p>Dear ${name || 'Admin'},</p>
-          <p>You have been added as an Administrator for the BUKSU Supreme Student Council system.</p>
-          <p><strong>Your login credentials:</strong></p>
-          <ul>
-            <li>Username: ${username}</li>
-            <li>Password: ${password}</li>
-            <li>Email: ${email}</li>
-          </ul>
-          <p>You can now access the Admin Dashboard and manage the system.</p>
-          <p>Thank you!</p>
-        `
-      };
-
-      await transporter.sendMail(mailOptions);
-      console.log('Admin notification email sent to:', email);
-    } catch (emailError) {
-      console.error('Error sending admin notification email:', emailError);
-      // Don't fail the request if email fails
-    }
-
     res.status(201).json({ message: 'Admin created successfully', admin });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Add president user
-export const addPresident = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
-    }
-
-    // Check if user already exists
-    let user = await User.findOne({ email });
-    
-    if (user) {
-      // If user exists, update role to president
-      if (user.role === 'president') {
-        return res.status(400).json({ message: 'User is already a president' });
-      }
-      user.role = 'president';
-      await user.save();
-    } else {
-      // Create new user with president role
-      user = new User({ email, role: 'president' });
-      await user.save();
-    }
-
-    await logActivity('system_admin', 'president_create', `President account created for ${email}`, {
-      presidentEmail: email,
-      presidentName: user.name || 'Unknown'
-    }, req);
-
-    // Send email notification
-    try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: config.email.user || 'your-email@gmail.com',
-          pass: config.email.pass || 'your-app-password'
-        }
-      });
-
-      const mailOptions = {
-        from: config.email.user || 'your-email@gmail.com',
-        to: email,
-        subject: 'President Account Created - BUKSU - SSC',
-        html: `
-          <h2>Welcome as President!</h2>
-          <p>Dear ${user.name || 'President'},</p>
-          <p>You have been added as a President for the BUKSU Supreme Student Council system.</p>
-          <p>You can now log in using your Google account (${email}) and access the President Dashboard.</p>
-          <p>Thank you!</p>
-        `
-      };
-
-      await transporter.sendMail(mailOptions);
-      console.log('President notification email sent to:', email);
-    } catch (emailError) {
-      console.error('Error sending president notification email:', emailError);
-      // Don't fail the request if email fails
-    }
-
-    res.status(201).json({ message: 'President added successfully', user });
   } catch (error) {
     next(error);
   }
