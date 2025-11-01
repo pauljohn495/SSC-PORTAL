@@ -194,7 +194,7 @@ const handleForgotPassword = async (e) => {
     )}
 
     <ReCAPTCHA
-      sitekey="6LfhiPQrAAAAAKVfzm4gwiD-_VEDNdz4h53mIvRT" // Test key
+      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || ''} 
       onChange={(token) => setRecaptchaToken(token)}
     />
 
