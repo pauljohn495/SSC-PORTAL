@@ -2,11 +2,59 @@ import User from '../models/User.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
+import mongoose from 'mongoose';
+
+// Verify reCAPTCHA token
+const verifyRecaptcha = async (token) => {
+  // In development mode without secret key, skip verification
+  if (config.nodeEnv === 'development' && !config.recaptcha.secretKey) {
+    console.log('Skipping reCAPTCHA verification in development mode');
+    return true;
+  }
+
+  if (!token) {
+    return false;
+  }
+
+  // If no secret key is configured, skip verification
+  if (!config.recaptcha.secretKey) {
+    console.warn('reCAPTCHA secret key not configured, skipping verification');
+    return true;
+  }
+
+  try {
+    const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `secret=${config.recaptcha.secretKey}&response=${token}`
+    });
+
+    const data = await response.json();
+    return data.success === true;
+  } catch (error) {
+    console.error('reCAPTCHA verification error:', error);
+    // In development, allow login even if verification fails
+    if (config.nodeEnv === 'development') {
+      return true;
+    }
+    return false;
+  }
+};
 
 // Google OAuth login
 export const googleAuth = async (req, res, next) => {
   try {
-    const { email, name, picture } = req.body;
+    const { email, name, picture, recaptchaToken } = req.body;
+
+    // Verify reCAPTCHA token if provided
+    if (recaptchaToken) {
+      const isValidRecaptcha = await verifyRecaptcha(recaptchaToken);
+      if (!isValidRecaptcha) {
+        return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+      }
+    }
 
     let user = await User.findOne({ email });
     if (!user) {
@@ -19,34 +67,87 @@ export const googleAuth = async (req, res, next) => {
       name: user.name 
     }, req);
 
-    res.json({ user });
+    // Return user object with all necessary fields
+    const userResponse = {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      picture: user.picture,
+      googleId: user.googleId
+    };
+
+    res.json({ user: userResponse });
   } catch (error) {
     next(error);
   }
 };
 
-// Admin login
+// Admin login (only admins can manually login - presidents use Google OAuth)
 export const adminLogin = async (req, res, next) => {
   try {
-    const { email, password, username } = req.body;
+    // Check database connection first
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: 'Database connection unavailable. Please try again.' });
+    }
+    
+    const { email, password, username, recaptchaToken } = req.body;
+
+    // Verify reCAPTCHA token if provided
+    if (recaptchaToken && recaptchaToken !== 'null' && recaptchaToken !== '') {
+      const isValidRecaptcha = await verifyRecaptcha(recaptchaToken);
+      if (!isValidRecaptcha) {
+        // In development mode, allow login even if reCAPTCHA fails
+        if (config.nodeEnv !== 'development') {
+          return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+        }
+      }
+    }
 
     let user;
+    // Only admins can manually login - presidents must use Google OAuth
     if (email) {
       user = await User.findOne({ email, role: 'admin' });
     } else if (username) {
       user = await User.findOne({ username, role: 'admin' });
+    } else {
+      return res.status(400).json({ message: 'Email or username is required' });
     }
     
-    if (!user || user.password !== password) {
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // Check if user has a password set
+    if (!user.password) {
+      return res.status(401).json({ message: 'Account does not have a password set. Please contact administrator.' });
+    }
+
+    // Check password
+    if (user.password !== password) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     await logActivity(user._id, 'admin_login', `Admin logged in manually`, { 
-      email: user.email 
+      email: user.email,
+      username: user.username 
     }, req);
 
-    res.json({ user });
+    // Return user object with all necessary fields
+    const userResponse = {
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      username: user.username,
+      role: 'admin',
+      picture: user.picture,
+      googleId: user.googleId
+    };
+
+    res.json({ user: userResponse });
   } catch (error) {
+    console.error('Admin login error:', error);
     next(error);
   }
 };

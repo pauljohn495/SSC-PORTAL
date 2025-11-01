@@ -39,6 +39,63 @@ export const addAdmin = async (req, res, next) => {
   }
 };
 
+// Add president user (creates account with email, password, name, username)
+export const addPresident = async (req, res, next) => {
+  try {
+    const { email, password, name, username } = req.body;
+
+    // If only email is provided, update existing user or create with minimal info
+    if (email && !password && !name && !username) {
+      let user = await User.findOne({ email });
+      
+      if (user) {
+        // Update existing user to president role
+        user.role = 'president';
+        await user.save();
+        
+        await logActivity('system_admin', 'president_create', `Existing user ${email} set as president`, {
+          presidentEmail: email
+        }, req);
+
+        return res.status(200).json({ message: 'User role updated to president', user });
+      } else {
+        // Create new user with just email (they'll need to set password later or use Google OAuth)
+        const president = new User({ email, role: 'president' });
+        await president.save();
+        
+        await logActivity('system_admin', 'president_create', `President email added: ${email}`, {
+          presidentEmail: email
+        }, req);
+
+        return res.status(201).json({ 
+          message: 'President email added. They can log in via Google OAuth or set up a password later.', 
+          user: president 
+        });
+      }
+    }
+
+    // Full president account creation (like admin)
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const president = new User({ email, password, name, username, role: 'president' });
+    await president.save();
+
+    await logActivity('system_admin', 'president_create', `President account created for ${email}`, {
+      presidentEmail: email,
+      presidentName: name,
+      presidentUsername: username
+    }, req);
+
+    res.status(201).json({ message: 'President created successfully', user: president });
+  } catch (error) {
+    console.error('Error adding president:', error);
+    next(error);
+  }
+};
+
 // Delete user
 export const deleteUser = async (req, res, next) => {
   try {

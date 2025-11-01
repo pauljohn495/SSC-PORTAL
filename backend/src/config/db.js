@@ -1,26 +1,47 @@
 import mongoose from 'mongoose';
+import { config } from './index.js';
 
 let isConnected = false;
 
 export const connectToDatabase = async () => {
-  if (isConnected) {
-    console.log('MongoDB already connected');
+  // Check if already connected
+  if (mongoose.connection.readyState === 1) {
+    isConnected = true;
     return;
   }
 
   try {
-    const mongoUri = process.env.MONGODB_URI;
-    
-    if (!mongoUri) {
-      throw new Error('MONGODB_URI environment variable is not set');
+    if (!config.mongodbUri) {
+      throw new Error('MONGODB_URI is not defined in environment variables');
     }
     
-    await mongoose.connect(mongoUri);
+    await mongoose.connect(config.mongodbUri, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    
     isConnected = true;
     console.log('MongoDB connected successfully');
+    
+    // Set up connection event handlers
+    mongoose.connection.on('error', (err) => {
+      console.error('MongoDB connection error:', err);
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.warn('MongoDB disconnected');
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('reconnected', () => {
+      console.log('MongoDB reconnected');
+      isConnected = true;
+    });
+    
   } catch (error) {
     console.error('MongoDB connection error:', error.message);
-    process.exit(1);
+    isConnected = false;
+    throw error;
   }
 };
 

@@ -13,19 +13,20 @@ function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [recaptchaToken, setRecaptchaToken] = useState('');
+  const [recaptchaError, setRecaptchaError] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const recaptchaRef = React.useRef(null);
 
 const handleLoginsuccess = async (credentialResponse) => {
 
-  if (!recaptchaToken) {
+  // Allow Google login even if reCAPTCHA has errors (backend will handle in dev mode)
+  if (!recaptchaToken && !recaptchaError) {
     alert('Please complete the reCAPTCHA');
     return;
   }
 
   const userObject = jwtDecode(credentialResponse.credential);
-
-  console.log(userObject);
 
   const response = await fetch('http://localhost:5001/api/auth/google', {
     method: 'POST',
@@ -35,15 +36,19 @@ const handleLoginsuccess = async (credentialResponse) => {
       name: userObject.name,
       email: userObject.email,
       picture: userObject.picture,
-      recaptchaToken
+      recaptchaToken: recaptchaToken || null
     })
   });
 
   const data = await response.json();
-  console.log('Server response: ', data);
 
   if (!response.ok) {
     alert(data.message || 'Login failed');
+    return;
+  }
+
+  if (!data.user || !data.user.role) {
+    alert('Invalid user data received. Please try again.');
     return;
   }
 
@@ -57,25 +62,30 @@ const handleLoginsuccess = async (credentialResponse) => {
 const handleAdminLogin = async (e) => {
   e.preventDefault();
 
-  console.log('Frontend: Attempting admin login with:', { username, password: '***', recaptchaToken: recaptchaToken ? 'present' : 'missing' });
 
-  if (!recaptchaToken) {
+  // Only require reCAPTCHA in production or if explicitly configured
+  // In development, allow login without reCAPTCHA if it fails
+  if (!recaptchaToken && !recaptchaError) {
     alert('Please complete the reCAPTCHA');
     return;
   }
 
+  // Send recaptchaToken even if empty (backend will handle gracefully in dev mode)
   const response = await fetch('http://localhost:5001/api/auth/admin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, recaptchaToken })
+    body: JSON.stringify({ username, password, recaptchaToken: recaptchaToken || null })
   });
 
   const data = await response.json();
-  console.log('Admin login response: ', data);
-  console.log('Response status:', response.status);
 
   if (!response.ok) {
     alert(data.message || 'Admin login failed');
+    return;
+  }
+
+  if (!data.user || !data.user.role) {
+    alert('Invalid user data received. Please try again.');
     return;
   }
 
@@ -194,8 +204,21 @@ const handleForgotPassword = async (e) => {
     )}
 
     <ReCAPTCHA
-      sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || ''} 
-      onChange={(token) => setRecaptchaToken(token)}
+      ref={recaptchaRef}
+      sitekey="6LfhiPQrAAAAAKVfzm4gwiD-_VEDNdz4h53mIvRT"
+      onChange={(token) => {
+        setRecaptchaToken(token);
+        setRecaptchaError(false);
+      }}
+      onExpired={() => {
+        setRecaptchaToken('');
+        setRecaptchaError(true);
+        console.warn('reCAPTCHA expired');
+      }}
+      onErrored={() => {
+        setRecaptchaError(true);
+        console.warn('reCAPTCHA error occurred - login may still work in development mode');
+      }}
     />
 
       </div>

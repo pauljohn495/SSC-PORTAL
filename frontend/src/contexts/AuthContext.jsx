@@ -14,12 +14,22 @@ export const AuthProvider = ({ children }) => {
     // Check if user is stored in localStorage
     const storedUser = localStorage.getItem('user');
     if (storedUser && storedUser !== 'undefined') {
-      setUser(JSON.parse(storedUser));
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('Error parsing user from localStorage:', error);
+        localStorage.removeItem('user');
+      }
     }
     setLoading(false);
   }, []);
 
   const login = (userData) => {
+    if (!userData || !userData.role) {
+      console.error('Invalid user data provided');
+      return;
+    }
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));
   };

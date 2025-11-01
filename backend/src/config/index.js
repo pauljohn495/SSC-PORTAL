@@ -10,6 +10,10 @@ export const config = {
   email: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  recaptcha: {
+    secretKey: process.env.RECAPTCHA_SECRET_KEY,
+    siteKey: process.env.RECAPTCHA_SITE_KEY
   }
 };
 
