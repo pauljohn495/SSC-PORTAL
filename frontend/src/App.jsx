@@ -19,6 +19,7 @@ import PresidentDashboard from './pages/PresidentDashboard'
 import PresidentMemorandum from './pages/PresidentMemorandum'
 import PresidentHandbook from './pages/PresidentHandbook'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
+import PresidentNotify from './pages/PresidentNotify'
 
 function App() {
   return (
@@ -39,6 +40,7 @@ function App() {
           <Route path="/president-memorandum" element={<PresidentMemorandum />} />
           <Route path="/president-handbook" element={<PresidentHandbook />} />
           <Route path="/president-activity-logs" element={<PresidentActivityLogs />} />
+          <Route path="/president-notify" element={<PresidentNotify />} />
         </Routes>
       </Router>
     </AuthProvider>

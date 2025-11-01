@@ -1,5 +1,6 @@
 import express from 'express';
 import * as presidentController from '../controllers/presidentController.js';
+import * as notificationController from '../controllers/notificationController.js';
 
 const router = express.Router();
 
@@ -17,6 +18,11 @@ router.post('/handbook/:id/clear-priority', presidentController.clearHandbookPri
 
 // Activity logs
 router.get('/activity-logs', presidentController.getUserActivityLogs);
+
+// Notification routes
+router.post('/notifications', notificationController.createNotification);
+router.post('/notifications/:id/publish', notificationController.publishNotification);
+router.delete('/notifications/:id', notificationController.deleteNotification);
 
 export default router;
 

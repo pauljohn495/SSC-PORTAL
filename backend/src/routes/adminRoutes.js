@@ -6,6 +6,7 @@ const router = express.Router();
 // User management
 router.get('/users', adminController.getUsers);
 router.post('/add-admin', adminController.addAdmin);
+router.post('/add-president', adminController.addPresident);
 router.delete('/users/:id', adminController.deleteUser);
 
 // Handbook management

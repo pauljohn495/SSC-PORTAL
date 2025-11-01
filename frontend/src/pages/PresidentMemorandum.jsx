@@ -321,6 +321,7 @@ const PresidentMemorandum = () => {
         <ul className='space-y-4'>
           <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
           <li><Link to="/president-memorandum" className="block py-2 px-4 bg-blue-800 rounded transition">Memorandum</Link></li>
+          <li><Link to="/president-notify" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notify</Link></li>
           <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import NotificationIcon from '../components/NotificationIcon'
 
 const StudentHandbook = () => {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -55,6 +56,7 @@ const StudentHandbook = () => {
               Admin Dashboard
             </button>
           )}
+          <NotificationIcon />
           <button
             className='text-white hover:bg-blue-900 p-2 rounded-lg transition cursor-pointer'
             onClick={toggleMenu}
