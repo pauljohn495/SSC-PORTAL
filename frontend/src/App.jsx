@@ -18,6 +18,7 @@ import ActivityLogs from './pages/ActivityLogs'
 import PresidentDashboard from './pages/PresidentDashboard'
 import PresidentMemorandum from './pages/PresidentMemorandum'
 import PresidentHandbook from './pages/PresidentHandbook'
+import PresidentNotifications from './pages/PresidentNotifications'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
           <Route path="/president-dashboard" element={<PresidentDashboard />} />
           <Route path="/president-memorandum" element={<PresidentMemorandum />} />
           <Route path="/president-handbook" element={<PresidentHandbook />} />
+          <Route path="/president-notifications" element={<PresidentNotifications />} />
           <Route path="/president-activity-logs" element={<PresidentActivityLogs />} />
         </Routes>
       </Router>

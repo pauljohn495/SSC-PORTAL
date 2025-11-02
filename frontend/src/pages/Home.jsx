@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import NotificationDropdown from '../components/NotificationDropdown'
 import buksublack from '../assets/buksu-black.png'
 import bgimage from '../assets/bg-image.jpg'
 import buksunew from '../assets/buksu-new.png'
@@ -82,28 +83,31 @@ const Home = () => {
             </button>
           )}
           {user && (
-            <div className='relative'>
-              <button
-                className='text-white hover:bg-blue-900 p-2 rounded-lg transition cursor-pointer'
-                onClick={toggleMenu}
-                aria-label="Menu"
-              >
-                <div className='w-6 h-0.5 bg-white mb-1'></div>
-                <div className='w-6 h-0.5 bg-white mb-1'></div>
-                <div className='w-6 h-0.5 bg-white'></div>
-              </button>
-              {menuOpen && (
-                <div className='absolute right-0 mt-2 w-48 bg-white text-blue-950 rounded-lg shadow-lg z-10'>
-                  <button
-                    className='block w-full text-left px-4 py-2  cursor-pointer rounded-lg'
-                    onClick={handleLogout}
-                  >
-                    Logout
-                  </button>
-                </div>
-              )}
+            <>
+              <NotificationDropdown />
+              <div className='relative'>
+                <button
+                  className='text-white hover:bg-blue-900 p-2 rounded-lg transition cursor-pointer'
+                  onClick={toggleMenu}
+                  aria-label="Menu"
+                >
+                  <div className='w-6 h-0.5 bg-white mb-1'></div>
+                  <div className='w-6 h-0.5 bg-white mb-1'></div>
+                  <div className='w-6 h-0.5 bg-white'></div>
+                </button>
+                {menuOpen && (
+                  <div className='absolute right-0 mt-2 w-48 bg-white text-blue-950 rounded-lg shadow-lg z-10'>
+                    <button
+                      className='block w-full text-left px-4 py-2  cursor-pointer rounded-lg'
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+                  </div>
+                )}
 
-            </div>
+              </div>
+            </>
           )}
         </div>
       </header>

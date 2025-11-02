@@ -2,15 +2,27 @@ import User from '../models/User.js';
 import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
+import Notification from '../models/Notification.js';
 import { logActivity } from '../utils/activityLogger.js';
+import nodemailer from 'nodemailer';
+import { config } from '../config/index.js';
 
 // Upload memorandum
 export const uploadMemorandum = async (req, res, next) => {
   try {
     const { title, year, fileUrl, userId } = req.body;
 
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
     const user = await User.findById(userId);
-    if (!user || user.role !== 'president') {
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.role !== 'president') {
+      console.error(`User ${userId} (${user.email}) attempted to upload memorandum but has role: ${user.role}`);
       return res.status(403).json({ message: 'Only presidents can upload memorandum drafts' });
     }
 
@@ -153,8 +165,17 @@ export const createHandbook = async (req, res, next) => {
   try {
     const { title, content, userId } = req.body;
 
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
     const user = await User.findById(userId);
-    if (!user || user.role !== 'president') {
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.role !== 'president') {
+      console.error(`User ${userId} (${user.email}) attempted to create handbook but has role: ${user.role}`);
       return res.status(403).json({ message: 'Only presidents can create handbook drafts' });
     }
 
@@ -304,6 +325,161 @@ export const getUserActivityLogs = async (req, res, next) => {
       .sort({ timestamp: -1 })
       .limit(500);
     res.json(logs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create notification (only president)
+export const createNotification = async (req, res, next) => {
+  try {
+    const { title, message, userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.role !== 'president') {
+      console.error(`User ${userId} (${user.email}) attempted to create notification but has role: ${user.role}`);
+      return res.status(403).json({ message: 'Only presidents can create notifications' });
+    }
+
+    if (!title || !message) {
+      return res.status(400).json({ message: 'Title and message are required' });
+    }
+
+    const notification = new Notification({ title, message, createdBy: userId });
+    await notification.save();
+
+    await logActivity(userId, 'notification_create', `Notification "${title}" created`, { 
+      notificationId: notification._id, 
+      title 
+    }, req);
+
+    res.status(201).json({ message: 'Notification created successfully', notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Publish notification and send email to all users (only president)
+export const publishNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can publish notifications' });
+    }
+
+    const notification = await Notification.findById(id);
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    if (notification.published) {
+      return res.status(400).json({ message: 'Notification is already published' });
+    }
+
+    // Mark as published
+    notification.published = true;
+    notification.publishedAt = new Date();
+    await notification.save();
+
+    // Send email to all users
+    try {
+      const allUsers = await User.find({ email: { $exists: true, $ne: null } });
+      
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: config.email.user || 'your-email@gmail.com',
+          pass: config.email.pass || 'your-app-password'
+        }
+      });
+
+      const emailPromises = allUsers.map(async (user) => {
+        if (user.email) {
+          try {
+            await transporter.sendMail({
+              from: config.email.user || 'your-email@gmail.com',
+              to: user.email,
+              subject: `[BUKSU SSC] ${notification.title}`,
+              html: `
+                <h2>${notification.title}</h2>
+                <p>${notification.message.replace(/\n/g, '<br>')}</p>
+                <hr>
+                <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
+              `
+            });
+          } catch (emailError) {
+            console.error(`Failed to send email to ${user.email}:`, emailError);
+          }
+        }
+      });
+
+      await Promise.all(emailPromises);
+      notification.emailSent = true;
+      await notification.save();
+    } catch (emailError) {
+      console.error('Error sending notification emails:', emailError);
+      // Continue even if email fails
+    }
+
+    await logActivity(userId, 'notification_publish', `Notification "${notification.title}" published`, { 
+      notificationId: notification._id, 
+      title: notification.title 
+    }, req);
+
+    res.status(200).json({ message: 'Notification published and emails sent', notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get all notifications (published first, then unpublished)
+export const getNotifications = async (req, res, next) => {
+  try {
+    const notifications = await Notification.find()
+      .populate('createdBy', 'name email')
+      .sort({ published: -1, publishedAt: -1, createdAt: -1 });
+    
+    res.json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Delete notification (only president)
+export const deleteNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      return res.status(403).json({ message: 'Only presidents can delete notifications' });
+    }
+
+    const notification = await Notification.findById(id);
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    await Notification.findByIdAndDelete(id);
+
+    await logActivity(userId, 'notification_delete', `Notification "${notification.title}" deleted`, { 
+      notificationId: id, 
+      title: notification.title 
+    }, req);
+
+    res.json({ message: 'Notification deleted successfully' });
   } catch (error) {
     next(error);
   }

@@ -46,19 +46,39 @@ const verifyRecaptcha = async (token) => {
 // Google OAuth login
 export const googleAuth = async (req, res, next) => {
   try {
-    const { email, name, picture, recaptchaToken } = req.body;
+    const { email, name, picture, googleId, recaptchaToken } = req.body;
 
     // Verify reCAPTCHA token if provided
-    if (recaptchaToken) {
+    if (recaptchaToken && recaptchaToken !== 'null' && recaptchaToken !== '') {
       const isValidRecaptcha = await verifyRecaptcha(recaptchaToken);
       if (!isValidRecaptcha) {
-        return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+        // In development mode, allow login even if reCAPTCHA fails
+        if (config.nodeEnv !== 'development') {
+          return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+        }
       }
     }
 
     let user = await User.findOne({ email });
     if (!user) {
-      user = new User({ email, name, picture, role: 'student' });
+      user = new User({ email, name, picture, googleId, role: 'student' });
+      await user.save();
+    } else {
+      // Update user info if missing or changed
+      if (googleId && !user.googleId) {
+        user.googleId = googleId;
+      }
+      if (name && !user.name) {
+        user.name = name;
+      }
+      if (picture && !user.picture) {
+        user.picture = picture;
+      }
+      // IMPORTANT: Preserve existing role (don't overwrite admin/president roles)
+      // Only set role to 'student' if user doesn't have a role yet
+      if (!user.role) {
+        user.role = 'student';
+      }
       await user.save();
     }
 

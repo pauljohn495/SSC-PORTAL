@@ -3,6 +3,8 @@ import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
 import { logActivity } from '../utils/activityLogger.js';
+import nodemailer from 'nodemailer';
+import { config } from '../config/index.js';
 
 // Get all users
 export const getUsers = async (req, res, next) => {
@@ -19,13 +21,151 @@ export const addAdmin = async (req, res, next) => {
   try {
     const { email, password, name, username } = req.body;
 
+    // Check for existing user with same email or username
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      // If user already exists as admin/president, update their details instead of blocking
+      // This allows reusing email addresses after deletion
+      if (existingUser.role === 'admin' || existingUser.role === 'president') {
+        // Update existing admin/president account with new details
+        existingUser.password = password;
+        existingUser.name = name;
+        existingUser.username = username;
+        // Keep the role as is (admin stays admin, president stays president)
+        await existingUser.save();
+        
+        // Send email notification
+        try {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: config.email.user || 'your-email@gmail.com',
+              pass: config.email.pass || 'your-app-password'
+            }
+          });
+
+          const loginUrl = `${config.corsOrigin}/login`;
+          await transporter.sendMail({
+            from: config.email.user || 'your-email@gmail.com',
+            to: email,
+            subject: '[BUKSU SSC] Admin Account Updated',
+            html: `
+              <h2>Admin Account Updated</h2>
+              <p>Dear ${name || 'Admin'},</p>
+              <p>Your admin account has been updated with new credentials.</p>
+              <p><strong>Account Details:</strong></p>
+              <ul>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Username:</strong> ${username}</li>
+                <li><strong>Password:</strong> ${password}</li>
+                <li><strong>Role:</strong> ${existingUser.role === 'admin' ? 'Admin' : 'President'}</li>
+              </ul>
+              <p>You can now log in to the portal using your credentials:</p>
+              <hr>
+              <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+            `
+          });
+        } catch (emailError) {
+          console.error('Error sending admin account update email:', emailError);
+        }
+
+        await logActivity('system_admin', 'admin_update', `Admin account updated for ${email}`, {
+          adminEmail: email,
+          adminName: name,
+          adminUsername: username
+        }, req);
+
+        return res.status(200).json({ message: 'Admin account updated successfully', admin: existingUser });
+      }
+      // If it's a student, we can update them to admin
+      existingUser.role = 'admin';
+      existingUser.password = password;
+      existingUser.name = name;
+      existingUser.username = username;
+      await existingUser.save();
+      
+      // Send email notification
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: config.email.user || 'your-email@gmail.com',
+            pass: config.email.pass || 'your-app-password'
+          }
+        });
+
+        const loginUrl = `${config.corsOrigin}/login`;
+        await transporter.sendMail({
+          from: config.email.user || 'your-email@gmail.com',
+          to: email,
+          subject: '[BUKSU SSC] Admin Account Created',
+          html: `
+            <h2>Welcome to BUKSU SSC Portal!</h2>
+            <p>Dear ${name || 'Admin'},</p>
+            <p>Your admin account has been successfully created.</p>
+            <p><strong>Account Details:</strong></p>
+            <ul>
+              <li><strong>Email:</strong> ${email}</li>
+              <li><strong>Username:</strong> ${username}</li>
+              <li><strong>Password:</strong> ${password}</li>
+              <li><strong>Role:</strong> Admin</li>
+            </ul>
+            <p>You can now log in to the portal using your credentials:</p>
+            <hr>
+            <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+          `
+        });
+      } catch (emailError) {
+        console.error('Error sending admin account creation email:', emailError);
+      }
+
+      await logActivity('system_admin', 'admin_create', `Admin account created for ${email} (upgraded from student)`, {
+        adminEmail: email,
+        adminName: name,
+        adminUsername: username
+      }, req);
+
+      return res.status(200).json({ message: 'User upgraded to admin successfully', admin: existingUser });
     }
 
     const admin = new User({ email, password, name, username, role: 'admin' });
     await admin.save();
+
+    // Send email notification to the new admin
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: config.email.user || 'your-email@gmail.com',
+          pass: config.email.pass || 'your-app-password'
+        }
+      });
+
+      const loginUrl = `${config.corsOrigin}/login`;
+      await transporter.sendMail({
+        from: config.email.user || 'your-email@gmail.com',
+        to: email,
+        subject: '[BUKSU SSC] Admin Account Created',
+        html: `
+          <h2>Welcome to BUKSU SSC Portal!</h2>
+          <p>Dear ${name || 'Admin'},</p>
+          <p>Your admin account has been successfully created.</p>
+          <p><strong>Account Details:</strong></p>
+          <ul>
+            <li><strong>Email:</strong> ${email}</li>
+            <li><strong>Username:</strong> ${username}</li>
+            <li><strong>Password:</strong> ${password}</li>
+            <li><strong>Role:</strong> Admin</li>
+          </ul>
+          <p>You can now log in to the portal using your credentials:</p>
+          <hr>
+          <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+        `
+      });
+    } catch (emailError) {
+      console.error('Error sending admin account creation email:', emailError);
+      // Continue even if email fails
+    }
 
     await logActivity('system_admin', 'admin_create', `Admin account created for ${email}`, {
       adminEmail: email,
@@ -53,6 +193,42 @@ export const addPresident = async (req, res, next) => {
         user.role = 'president';
         await user.save();
         
+        // Send email notification to the user
+        try {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: config.email.user || 'your-email@gmail.com',
+              pass: config.email.pass || 'your-app-password'
+            }
+          });
+
+          const loginUrl = `${config.corsOrigin}/login`;
+          await transporter.sendMail({
+            from: config.email.user || 'your-email@gmail.com',
+            to: email,
+            subject: '[BUKSU SSC] President Role Assigned',
+            html: `
+              <h2>President Role Assigned</h2>
+              <p>Dear ${user.name || 'User'},</p>
+              <p>Your account has been assigned the <strong>President</strong> role in the BUKSU SSC Portal.</p>
+              <p>You now have access to president features and can:</p>
+              <ul>
+                <li>Create and manage handbook pages</li>
+                <li>Upload and edit memorandums</li>
+                <li>Create and publish notifications</li>
+                <li>View your activity logs</li>
+              </ul>
+              <p>You can log in using this Email Via Google</p>
+              <hr>
+              <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+            `
+          });
+        } catch (emailError) {
+          console.error('Error sending president role assignment email:', emailError);
+          // Continue even if email fails
+        }
+        
         await logActivity('system_admin', 'president_create', `Existing user ${email} set as president`, {
           presidentEmail: email
         }, req);
@@ -63,12 +239,47 @@ export const addPresident = async (req, res, next) => {
         const president = new User({ email, role: 'president' });
         await president.save();
         
+        // Send email notification to the new president
+        try {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: config.email.user || 'your-email@gmail.com',
+              pass: config.email.pass || 'your-app-password'
+            }
+          });
+
+          const loginUrl = `${config.corsOrigin}/login`;
+          await transporter.sendMail({
+            from: config.email.user || 'your-email@gmail.com',
+            to: email,
+            subject: '[BUKSU SSC] President Account Created',
+            html: `
+              <h2>Welcome to BUKSU SSC Portal!</h2>
+              <p>Dear President,</p>
+              <p>Your president account has been created with the email: <strong>${email}</strong></p>
+              <p>You can now log in using This Email Via Google. As a president, you have access to:</p>
+              <ul>
+                <li>Create and manage handbook pages</li>
+                <li>Upload and edit memorandums</li>
+                <li>Create and publish notifications</li>
+                <li>View your activity logs</li>
+              </ul>
+              <hr>
+              <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+            `
+          });
+        } catch (emailError) {
+          console.error('Error sending president account creation email:', emailError);
+          // Continue even if email fails
+        }
+        
         await logActivity('system_admin', 'president_create', `President email added: ${email}`, {
           presidentEmail: email
         }, req);
 
         return res.status(201).json({ 
-          message: 'President email added. They can log in via Google OAuth or set up a password later.', 
+          message: 'President email added. They can log in via Google Authentication', 
           user: president 
         });
       }
@@ -77,11 +288,160 @@ export const addPresident = async (req, res, next) => {
     // Full president account creation (like admin)
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
     if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+      // If user already exists as admin/president, update their details instead of blocking
+      // This allows reusing email addresses after deletion
+      if (existingUser.role === 'admin' || existingUser.role === 'president') {
+        // Update existing admin/president account with new details and set to president
+        existingUser.role = 'president';
+        existingUser.password = password;
+        existingUser.name = name;
+        existingUser.username = username;
+        await existingUser.save();
+        
+        // Send email notification
+        try {
+          const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user: config.email.user || 'your-email@gmail.com',
+              pass: config.email.pass || 'your-app-password'
+            }
+          });
+
+          const loginUrl = `${config.corsOrigin}/login`;
+          await transporter.sendMail({
+            from: config.email.user || 'your-email@gmail.com',
+            to: email,
+            subject: '[BUKSU SSC] President Account Updated',
+            html: `
+              <h2>President Account Updated</h2>
+              <p>Dear ${name || 'President'},</p>
+              <p>Your president account has been updated with new credentials.</p>
+              <p><strong>Account Details:</strong></p>
+              <ul>
+                <li><strong>Email:</strong> ${email}</li>
+                <li><strong>Role:</strong> President</li>
+              </ul>
+              <p>As a president, you have access to:</p>
+              <ul>
+                <li>Create and manage handbook pages</li>
+                <li>Upload and edit memorandums</li>
+                <li>Create and publish notifications</li>
+                <li>View your activity logs</li>
+              </ul>
+              <hr>
+              <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+            `
+          });
+        } catch (emailError) {
+          console.error('Error sending president account update email:', emailError);
+        }
+
+        await logActivity('system_admin', 'president_update', `President account updated for ${email}`, {
+          presidentEmail: email,
+          presidentName: name,
+          presidentUsername: username
+        }, req);
+
+        return res.status(200).json({ message: 'President account updated successfully', user: existingUser });
+      }
+      // If it's a student, we can update them to president
+      existingUser.role = 'president';
+      existingUser.password = password;
+      existingUser.name = name;
+      existingUser.username = username;
+      await existingUser.save();
+      
+      // Send email notification
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: config.email.user || 'your-email@gmail.com',
+            pass: config.email.pass || 'your-app-password'
+          }
+        });
+
+        const loginUrl = `${config.corsOrigin}/login`;
+        await transporter.sendMail({
+          from: config.email.user || 'your-email@gmail.com',
+          to: email,
+          subject: '[BUKSU SSC] President Account Created',
+          html: `
+            <h2>Welcome to BUKSU SSC Portal!</h2>
+            <p>Dear ${name || 'President'},</p>
+            <p>Your president account has been successfully created.</p>
+            <p><strong>Account Details:</strong></p>
+            <ul>
+              <li><strong>Email:</strong> ${email}</li>
+              <li><strong>Role:</strong> President</li>
+            </ul>
+            <p>As a president, you have access to:</p>
+            <ul>
+              <li>Create and manage handbook pages</li>
+              <li>Upload and edit memorandums</li>
+              <li>Create and publish notifications</li>
+              <li>View your activity logs</li>
+            </ul>
+            <hr>
+            <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+          `
+        });
+      } catch (emailError) {
+        console.error('Error sending president account creation email:', emailError);
+      }
+
+      await logActivity('system_admin', 'president_create', `President account created for ${email} (upgraded from student)`, {
+        presidentEmail: email,
+        presidentName: name,
+        presidentUsername: username
+      }, req);
+
+      return res.status(200).json({ message: 'User upgraded to president successfully', user: existingUser });
     }
 
     const president = new User({ email, password, name, username, role: 'president' });
     await president.save();
+
+    // Send email notification to the new president
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: config.email.user || 'your-email@gmail.com',
+          pass: config.email.pass || 'your-app-password'
+        }
+      });
+
+      const loginUrl = `${config.corsOrigin}/login`;
+      await transporter.sendMail({
+        from: config.email.user || 'your-email@gmail.com',
+        to: email,
+        subject: '[BUKSU SSC] President Account Created',
+        html: `
+          <h2>Welcome to BUKSU SSC Portal!</h2>
+          <p>Dear ${name || 'President'},</p>
+          <p>Your president account has been successfully created.</p>
+          <p><strong>Account Details:</strong></p>
+          <ul>
+            <li><strong>Email:</strong> ${email}</li>
+            <li><strong>Role:</strong> President</li>
+          </ul>
+          <p>As a president, you have access to:</p>
+          <ul>
+            <li>Create and manage handbook pages</li>
+            <li>Upload and edit memorandums</li>
+            <li>Create and publish notifications</li>
+            <li>View your activity logs</li>
+          </ul>
+          <hr>
+          <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
+        `
+      });
+    } catch (emailError) {
+      console.error('Error sending president account creation email:', emailError);
+      // Continue even if email fails
+    }
 
     await logActivity('system_admin', 'president_create', `President account created for ${email}`, {
       presidentEmail: email,

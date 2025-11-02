@@ -18,5 +18,11 @@ router.post('/handbook/:id/clear-priority', presidentController.clearHandbookPri
 // Activity logs
 router.get('/activity-logs', presidentController.getUserActivityLogs);
 
+// Notification routes
+router.post('/notifications', presidentController.createNotification);
+router.post('/notifications/:id/publish', presidentController.publishNotification);
+router.delete('/notifications/:id', presidentController.deleteNotification);
+router.get('/notifications', presidentController.getNotifications);
+
 export default router;
 

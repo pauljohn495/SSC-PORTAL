@@ -121,12 +121,28 @@ export const presidentAPI = {
   
   // Activity logs
   getUserActivityLogs: (userId) => apiRequest(`/president/activity-logs?userId=${userId}`),
+  
+  // Notification routes
+  createNotification: (data) => apiRequest('/president/notifications', {
+    method: 'POST',
+    body: data,
+  }),
+  publishNotification: (id, userId) => apiRequest(`/president/notifications/${id}/publish`, {
+    method: 'POST',
+    body: { userId },
+  }),
+  deleteNotification: (id, userId) => apiRequest(`/president/notifications/${id}`, {
+    method: 'DELETE',
+    body: { userId },
+  }),
+  getNotifications: () => apiRequest('/president/notifications'),
 };
 
 // Public API
 export const publicAPI = {
   getPublicHandbooks: () => apiRequest('/handbook'),
   getPublicMemorandums: () => apiRequest('/memorandums'),
+  getPublicNotifications: () => apiRequest('/notifications'),
 };
 
 export default {
