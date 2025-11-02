@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 const PresidentHandbook = () => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
-  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -14,7 +13,6 @@ const PresidentHandbook = () => {
   const [handbooks, setHandbooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingHandbook, setEditingHandbook] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
   const [editVersion, setEditVersion] = useState(1);
   const [hasPriority, setHasPriority] = useState(false);
@@ -44,8 +42,8 @@ const PresidentHandbook = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!title || !content) {
-      setMessage('Please fill in all fields.');
+    if (!content) {
+      setMessage('Please fill in the content field.');
       setMessageType('error');
       return;
     }
@@ -57,7 +55,6 @@ const PresidentHandbook = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title,
           content,
           userId: user._id
         })
@@ -68,7 +65,6 @@ const PresidentHandbook = () => {
       if (response.ok) {
         setMessage('Handbook page created successfully! Waiting for admin approval.');
         setMessageType('success');
-        setTitle('');
         setContent('');
         setShowModal(false);
         fetchHandbooks(); // Refresh the list
@@ -101,11 +97,9 @@ const PresidentHandbook = () => {
         setHasPriority(true);
         setPriorityError('');
         setEditingHandbook(handbook);
-        setEditTitle(handbook.title);
         setEditContent(handbook.content);
         setEditVersion(handbook.version || 1);
         setShowModal(true);
-        setTitle('');
         setContent('');
         setMessage('');
         setMessageType('');
@@ -114,11 +108,9 @@ const PresidentHandbook = () => {
         setHasPriority(false);
         setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
         setEditingHandbook(handbook);
-        setEditTitle(handbook.title);
         setEditContent(handbook.content);
         setEditVersion(handbook.version || 1);
         setShowModal(true);
-        setTitle('');
         setContent('');
         setMessage('');
         setMessageType('');
@@ -132,8 +124,8 @@ const PresidentHandbook = () => {
   const handleUpdate = async (e) => {
     e.preventDefault();
     
-    if (!editTitle || !editContent) {
-      setMessage('Please fill in all fields.');
+    if (!editContent) {
+      setMessage('Please fill in the content field.');
       setMessageType('error');
       return;
     }
@@ -145,7 +137,6 @@ const PresidentHandbook = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: editTitle,
           content: editContent,
           userId: user._id,
           version: editVersion
@@ -158,7 +149,6 @@ const PresidentHandbook = () => {
         setMessage('Handbook page updated successfully! Waiting for admin approval.');
         setMessageType('success');
         setEditingHandbook(null);
-        setEditTitle('');
         setEditContent('');
         setShowModal(false);
         fetchHandbooks(); // Refresh the list
@@ -191,9 +181,7 @@ const PresidentHandbook = () => {
 
     setShowModal(false);
     setEditingHandbook(null);
-    setTitle('');
     setContent('');
-    setEditTitle('');
     setEditContent('');
     setEditVersion(1);
     setHasPriority(false);
@@ -291,7 +279,7 @@ const PresidentHandbook = () => {
                     <div key={handbook._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === handbooks.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                       <div className='flex-1 px-6 py-4'>
                         <div className='flex items-center space-x-2'>
-                          <p className='text-gray-800 font-medium'>{handbook.title}</p>
+                          <p className='text-gray-800 font-medium'>Page {handbook.pageNumber || 'N/A'}</p>
                           {handbook.editedBy && (
                             <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
                               Edited
@@ -363,22 +351,16 @@ const PresidentHandbook = () => {
             )}
 
             <form onSubmit={editingHandbook ? handleUpdate : handleSubmit}>
-              <div className='mb-6'>
-                <label className='block text-sm font-semibold text-gray-700 mb-2'>
-                  Page Title
-                </label>
-                <input
-                  type='text'
-                  value={editingHandbook ? editTitle : title}
-                  onChange={(e) => editingHandbook ? setEditTitle(e.target.value) : setTitle(e.target.value)}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-black'
-                  placeholder='Enter handbook page title'
-                  required
-                />
-              </div>
+              {editingHandbook && (
+                <div className='mb-4 p-3 bg-blue-50 rounded-lg'>
+                  <p className='text-sm text-blue-800'>
+                    <strong>Page Number:</strong> {editingHandbook.pageNumber || 'N/A'}
+                  </p>
+                </div>
+              )}
 
               <div className='mb-6'>
-                <label className='block text-sm font-semibold text-gray-700 mb-2 text-black'>
+                <label className='block text-sm font-semibold text-gray-700 mb-2'>
                   Content
                 </label>
                 <textarea

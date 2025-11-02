@@ -507,9 +507,9 @@ export const updateHandbookStatus = async (req, res, next) => {
     handbook.status = status;
     await handbook.save();
 
-    await logActivity('system_admin', 'handbook_approve', `Handbook "${handbook.title}" ${status}`, { 
+    await logActivity('system_admin', 'handbook_approve', `Handbook page ${handbook.pageNumber} ${status}`, { 
       handbookId: id, 
-      title: handbook.title, 
+      pageNumber: handbook.pageNumber, 
       status 
     }, req);
 
@@ -531,9 +531,9 @@ export const deleteHandbook = async (req, res, next) => {
 
     await Handbook.findByIdAndDelete(id);
 
-    await logActivity('system_admin', 'handbook_delete', `Handbook deleted: "${handbook.title}"`, { 
+    await logActivity('system_admin', 'handbook_delete', `Handbook page ${handbook.pageNumber} deleted`, { 
       handbookId: id, 
-      title: handbook.title 
+      pageNumber: handbook.pageNumber 
     }, req);
 
     res.json({ message: 'Handbook deleted successfully' });

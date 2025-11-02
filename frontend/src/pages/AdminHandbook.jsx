@@ -142,7 +142,10 @@ const AdminHandbook = () => {
                     return (
                       <div key={draft._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === drafts.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                         <div className='flex-1 px-6 py-4'>
-                          <p className='text-gray-800 font-medium'>{draft.title}</p>
+                          <div className='flex items-center space-x-2'>
+                            <p className='text-gray-800 font-medium'>Page {draft.pageNumber || 'N/A'}</p>
+                          </div>
+                          <p className='text-sm text-gray-500 mt-1 truncate'>{draft.content ? draft.content.substring(0, 100) + '...' : 'No content'}</p>
                         </div>
                         <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
                         <div className='w-32 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>

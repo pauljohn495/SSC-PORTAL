@@ -5,7 +5,7 @@ import Notification from '../models/Notification.js';
 // Get all approved handbooks
 export const getPublicHandbooks = async (req, res, next) => {
   try {
-    const handbooks = await Handbook.find({ status: 'approved' }).sort({ createdAt: -1 });
+    const handbooks = await Handbook.find({ status: 'approved' }).sort({ pageNumber: 1 });
     res.json(handbooks);
   } catch (error) {
     next(error);

@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 
 const handbookSchema = new mongoose.Schema({
-  title: { type: String, required: true },
   content: { type: String, required: true },
+  pageNumber: { type: Number, required: true, unique: true },
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },

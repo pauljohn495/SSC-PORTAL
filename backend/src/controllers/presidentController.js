@@ -163,10 +163,14 @@ export const clearMemorandumPriority = async (req, res, next) => {
 // Create handbook page
 export const createHandbook = async (req, res, next) => {
   try {
-    const { title, content, userId } = req.body;
+    const { content, userId } = req.body;
 
     if (!userId) {
       return res.status(400).json({ message: 'User ID is required' });
+    }
+
+    if (!content) {
+      return res.status(400).json({ message: 'Content is required' });
     }
 
     const user = await User.findById(userId);
@@ -179,12 +183,16 @@ export const createHandbook = async (req, res, next) => {
       return res.status(403).json({ message: 'Only presidents can create handbook drafts' });
     }
 
-    const handbook = new Handbook({ title, content, createdBy: userId });
+    // Get the next page number (count existing approved/draft handbooks + 1)
+    const existingHandbooksCount = await Handbook.countDocuments();
+    const pageNumber = existingHandbooksCount + 1;
+
+    const handbook = new Handbook({ content, pageNumber, createdBy: userId });
     await handbook.save();
 
-    await logActivity(userId, 'handbook_create', `Handbook page "${title}" created`, { 
+    await logActivity(userId, 'handbook_create', `Handbook page ${pageNumber} created`, { 
       handbookId: handbook._id, 
-      title 
+      pageNumber 
     }, req);
 
     res.status(201).json({ message: 'Handbook draft created', handbook });
@@ -238,7 +246,11 @@ export const setHandbookPriority = async (req, res, next) => {
 export const updateHandbook = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, content, userId, version } = req.body;
+    const { content, userId, version } = req.body;
+
+    if (!content) {
+      return res.status(400).json({ message: 'Content is required' });
+    }
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
@@ -261,7 +273,6 @@ export const updateHandbook = async (req, res, next) => {
       return res.status(409).json({ message: 'Document has been modified. Please refresh and try again.' });
     }
 
-    handbook.title = title;
     handbook.content = content;
     handbook.status = 'draft';
     handbook.updatedAt = Date.now();
@@ -272,9 +283,9 @@ export const updateHandbook = async (req, res, next) => {
     handbook.priorityEditStartedAt = null;
     await handbook.save();
 
-    await logActivity(userId, 'handbook_update', `Handbook page "${handbook.title}" updated`, { 
+    await logActivity(userId, 'handbook_update', `Handbook page ${handbook.pageNumber} updated`, { 
       handbookId: id, 
-      title: handbook.title 
+      pageNumber: handbook.pageNumber 
     }, req);
 
     res.status(200).json({ message: 'Handbook updated successfully', handbook });
