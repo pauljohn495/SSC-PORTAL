@@ -1,5 +1,6 @@
 import express from 'express';
 import * as presidentController from '../controllers/presidentController.js';
+import * as calendarController from '../controllers/calendarController.js';
 
 const router = express.Router();
 
@@ -23,6 +24,14 @@ router.post('/notifications', presidentController.createNotification);
 router.post('/notifications/:id/publish', presidentController.publishNotification);
 router.delete('/notifications/:id', presidentController.deleteNotification);
 router.get('/notifications', presidentController.getNotifications);
+
+// Google Calendar routes (president only)
+router.get('/calendar/auth-url', calendarController.getAuthUrl);
+router.get('/calendar/oauth/callback', calendarController.oauthCallback);
+router.get('/calendar/events', calendarController.listEvents);
+router.post('/calendar/events', calendarController.createEvent);
+router.put('/calendar/events/:eventId', calendarController.updateEvent);
+router.delete('/calendar/events/:eventId', calendarController.deleteEvent);
 
 export default router;
 

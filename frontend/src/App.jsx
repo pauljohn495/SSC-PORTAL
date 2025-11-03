@@ -20,6 +20,8 @@ import PresidentMemorandum from './pages/PresidentMemorandum'
 import PresidentHandbook from './pages/PresidentHandbook'
 import PresidentNotifications from './pages/PresidentNotifications'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
+import BuksuCalendar from './pages/BuksuCalendar'
+import PresidentCalendar from './pages/PresidentCalendar'
 
 function App() {
   return (
@@ -41,6 +43,8 @@ function App() {
           <Route path="/president-handbook" element={<PresidentHandbook />} />
           <Route path="/president-notifications" element={<PresidentNotifications />} />
           <Route path="/president-activity-logs" element={<PresidentActivityLogs />} />
+          <Route path="/buksu-calendar" element={<BuksuCalendar />} />
+          <Route path="/president-calendar" element={<PresidentCalendar />} />
         </Routes>
       </Router>
     </AuthProvider>

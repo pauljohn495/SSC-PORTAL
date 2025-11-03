@@ -58,8 +58,10 @@ const Home = () => {
       {/* Header */}
       <header className='bg-blue-950 text-white p-4 flex justify-between items-center' style={{ height: '64px' }}>
         <div className='flex items-center space-x-4' style={{ height: '100%' }}>
-          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" style={{ maxHeight: '128px', width: 'auto' }} />
-          <img src="/src/assets/ssc-logo.png" alt="SSC Logo" style={{ maxHeight: '128px', width: 'auto' }} />
+          <Link to="/" className='flex items-center space-x-4'>
+            <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" style={{ maxHeight: '128px', width: 'auto' }} />
+            <img src="/src/assets/ssc-logo.png" alt="SSC Logo" style={{ maxHeight: '128px', width: 'auto' }} />
+          </Link>
           <div className='flex flex-col justify-center' style={{ height: '100%' }}>
             <span className='text-lg font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <span className='text-sm font-semibold leading-none pt-2'>SUPREME STUDENT COUNCIL</span>

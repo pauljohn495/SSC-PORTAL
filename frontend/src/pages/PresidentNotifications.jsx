@@ -137,8 +137,10 @@ const PresidentNotifications = () => {
       <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-            <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4'>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            </Link>
           </div>
           <div className='text-center'>
             <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
@@ -149,6 +151,7 @@ const PresidentNotifications = () => {
         <ul className='space-y-4'>
           <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
           <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
+          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
           <li><Link to="/president-notifications" className="block py-2 px-4 bg-blue-800 rounded transition">Notifications</Link></li>
           <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>

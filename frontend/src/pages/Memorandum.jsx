@@ -111,6 +111,7 @@ const Memorandum = () => {
             <li className='py-2'><Link to="/" className="hover:underline">Home</Link></li>
             <li className='py-2'><Link to="/student-handbook" className="hover:underline">Handbook</Link></li>
             <li className='py-2'><Link to="/memorandum" className="hover:underline">Memorandum</Link></li>
+            <li className='py-2'><Link to="/buksu-calendar" className="hover:underline">BUKSU Calendar</Link></li>
 
             <li className='py-2'><button onClick={handleLogout} className="hover:underline text-left w-full">Logout</button></li>
           </ul>

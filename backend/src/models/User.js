@@ -9,7 +9,15 @@ const userSchema = new mongoose.Schema({
   password: String, // For manual admin login
   role: { type: String, default: 'student' },
   resetToken: String,
-  resetTokenExpiry: Date
+  resetTokenExpiry: Date,
+  // Google Calendar OAuth tokens (only for president role)
+  googleCalendar: {
+    accessToken: String,
+    refreshToken: String,
+    scope: String,
+    tokenType: String,
+    expiryDate: Number
+  }
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

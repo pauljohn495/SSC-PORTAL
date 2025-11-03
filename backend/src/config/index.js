@@ -14,6 +14,12 @@ export const config = {
   recaptcha: {
     secretKey: process.env.RECAPTCHA_SECRET_KEY,
     siteKey: process.env.RECAPTCHA_SITE_KEY
+  },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+    calendarId: process.env.GOOGLE_CALENDAR_ID // optional; defaults to primary
   }
 };
 
