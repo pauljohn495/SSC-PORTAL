@@ -6,6 +6,7 @@ import Notification from '../models/Notification.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
+import { sendPushToAllUsers } from '../utils/push.js';
 
 // Upload memorandum
 export const uploadMemorandum = async (req, res, next) => {
@@ -441,6 +442,13 @@ export const publishNotification = async (req, res, next) => {
     } catch (emailError) {
       console.error('Error sending notification emails:', emailError);
       // Continue even if email fails
+    }
+
+    // Send push to all users (best-effort)
+    try {
+      await sendPushToAllUsers(notification.title, notification.message);
+    } catch (pushErr) {
+      console.error('Error sending push notifications:', pushErr);
     }
 
     await logActivity(userId, 'notification_publish', `Notification "${notification.title}" published`, { 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { publicAPI } from '../services/api';
+import { subscribeOnMessage } from '../firebase';
 
 const NotificationDropdown = () => {
   const [notifications, setNotifications] = useState([]);
@@ -14,6 +15,30 @@ const NotificationDropdown = () => {
     const interval = setInterval(fetchNotifications, 30000);
     
     return () => clearInterval(interval);
+  }, []);
+
+  // Realtime: update list/badge on FCM foreground/background messages
+  useEffect(() => {
+    let unsubscribe = () => {};
+    (async () => {
+      unsubscribe = await subscribeOnMessage(() => {
+        fetchNotifications();
+      });
+    })();
+    const onSwMessage = (event) => {
+      if (event?.data?.type === 'fcm-bg') {
+        fetchNotifications();
+      }
+    };
+    if (navigator?.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', onSwMessage);
+    }
+    return () => {
+      try { unsubscribe(); } catch {}
+      if (navigator?.serviceWorker) {
+        navigator.serviceWorker.removeEventListener('message', onSwMessage);
+      }
+    };
   }, []);
 
   // Close dropdown when clicking outside

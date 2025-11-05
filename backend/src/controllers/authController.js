@@ -269,3 +269,28 @@ export const resetPassword = async (req, res, next) => {
   }
 };
 
+// Register/update FCM token for a user
+export const registerFcmToken = async (req, res, next) => {
+  try {
+    const { userId, fcmToken } = req.body;
+    if (!userId || !fcmToken) {
+      return res.status(400).json({ message: 'userId and fcmToken are required' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (!user.fcmTokens) user.fcmTokens = [];
+    if (!user.fcmTokens.includes(fcmToken)) {
+      user.fcmTokens.push(fcmToken);
+      await user.save();
+    }
+
+    res.json({ message: 'FCM token registered' });
+  } catch (error) {
+    next(error);
+  }
+};
+

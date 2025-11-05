@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
@@ -22,11 +22,49 @@ import PresidentNotifications from './pages/PresidentNotifications'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
 import BuksuCalendar from './pages/BuksuCalendar'
 import PresidentCalendar from './pages/PresidentCalendar'
+import { subscribeOnMessage } from './firebase'
+import { ToastContainer, toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 function App() {
+
+  useEffect(() => {
+    let unsubscribe = () => {}
+    (async () => {
+      unsubscribe = await subscribeOnMessage((payload) => {
+        const n = payload?.notification || {}
+        const d = payload?.data || {}
+        const title = n.title || d.title || 'Notification'
+        const body = n.body || d.body || ''
+        toast.info(body || title, { position: 'bottom-right', autoClose: 5000, hideProgressBar: false, closeOnClick: true })
+      })
+    })()
+    // Also listen for messages forwarded by the service worker (background cases)
+    const onSwMessage = (event) => {
+      if (event?.data?.type === 'fcm-bg') {
+        const payload = event.data.payload || {}
+        const n = payload?.notification || {}
+        const d = payload?.data || {}
+        const title = n.title || d.title || 'Notification'
+        const body = n.body || d.body || ''
+        toast.info(body || title, { position: 'bottom-right', autoClose: 5000, hideProgressBar: false, closeOnClick: true })
+      }
+    }
+    if (navigator?.serviceWorker) {
+      navigator.serviceWorker.addEventListener('message', onSwMessage)
+    }
+    return () => {
+      try { unsubscribe() } catch {}
+      if (navigator?.serviceWorker) {
+        navigator.serviceWorker.removeEventListener('message', onSwMessage)
+      }
+    }
+  }, [])
+
   return (
     <AuthProvider>
       <Router>
+        <ToastContainer />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />

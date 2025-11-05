@@ -50,6 +50,10 @@ export const authAPI = {
     method: 'POST',
     body: { token, newPassword },
   }),
+  registerFcmToken: ({ userId, fcmToken }) => apiRequest('/auth/fcm-token', {
+    method: 'POST',
+    body: { userId, fcmToken },
+  }),
 };
 
 // Admin API

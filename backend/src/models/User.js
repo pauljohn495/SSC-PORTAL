@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, default: 'student' },
   resetToken: String,
   resetTokenExpiry: Date,
+  fcmTokens: { type: [String], default: [] },
   // Google Calendar OAuth tokens (only for president role)
   googleCalendar: {
     accessToken: String,

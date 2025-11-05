@@ -12,6 +12,8 @@
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
     "@tailwindcss/vite": "^4.1.14",
+    "firebase": "^12.5.0",
+    "firebase-admin": "^13.5.0",
     "jspdf": "^3.0.3",
     "jwt-decode": "^4.0.0",
     "react": "^19.1.1",
@@ -19,6 +21,7 @@
     "react-google-recaptcha": "^3.1.0",
     "react-pdf": "^10.2.0",
     "react-router-dom": "^7.9.3",
+    "react-toastify": "^11.0.5",
     "tailwindcss": "^4.1.14"
   },
   "devDependencies": {

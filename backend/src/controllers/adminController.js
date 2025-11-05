@@ -5,6 +5,7 @@ import ActivityLog from '../models/ActivityLog.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
+import { sendPushToAllUsers } from '../utils/push.js';
 
 // Get all users
 export const getUsers = async (req, res, next) => {
@@ -513,6 +514,14 @@ export const updateHandbookStatus = async (req, res, next) => {
       status 
     }, req);
 
+    // If approved, send push to all users
+    if (status === 'approved') {
+      try {
+        await sendPushToAllUsers('New Handbook Published', `Page ${handbook.pageNumber} is now available.`);
+      } catch (pushErr) {
+        console.error('Push send error (handbook approve):', pushErr);
+      }
+    }
     res.json({ message: `Handbook ${status} successfully`, handbook });
   } catch (error) {
     next(error);
@@ -576,6 +585,14 @@ export const updateMemorandumStatus = async (req, res, next) => {
       status 
     }, req);
 
+    // If approved, send push to all users
+    if (status === 'approved') {
+      try {
+        await sendPushToAllUsers('New Memorandum Published', `${memorandum.title} is now available.`);
+      } catch (pushErr) {
+        console.error('Push send error (memorandum approve):', pushErr);
+      }
+    }
     res.json({ message: `Memorandum ${status} successfully`, memorandum });
   } catch (error) {
     next(error);
