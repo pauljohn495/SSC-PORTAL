@@ -25,6 +25,7 @@ import PresidentCalendar from './pages/PresidentCalendar'
 import { subscribeOnMessage } from './firebase'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
+import { onEvent } from './realtime/socket'
 
 function App() {
 
@@ -53,11 +54,23 @@ function App() {
     if (navigator?.serviceWorker) {
       navigator.serviceWorker.addEventListener('message', onSwMessage)
     }
+    // Socket.IO events -> show toast
+    const off1 = onEvent('notification:published', (n) => {
+      const msg = n?.message || n?.title || 'New notification'
+      toast.info(msg, { position: 'bottom-right', autoClose: 5000 })
+    })
+    const off2 = onEvent('handbook:approved', (h) => {
+      toast.info(`Handbook page ${h?.pageNumber} approved`, { position: 'bottom-right', autoClose: 5000 })
+    })
+    const off3 = onEvent('memorandum:approved', (m) => {
+      toast.info(`Memorandum approved: ${m?.title || ''}`, { position: 'bottom-right', autoClose: 5000 })
+    })
     return () => {
       try { unsubscribe() } catch {}
       if (navigator?.serviceWorker) {
         navigator.serviceWorker.removeEventListener('message', onSwMessage)
       }
+      off1 && off1(); off2 && off2(); off3 && off3();
     }
   }, [])
 

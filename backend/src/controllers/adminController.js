@@ -6,6 +6,7 @@ import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
+import { emitGlobal } from '../realtime/socket.js';
 
 // Get all users
 export const getUsers = async (req, res, next) => {
@@ -521,6 +522,9 @@ export const updateHandbookStatus = async (req, res, next) => {
       } catch (pushErr) {
         console.error('Push send error (handbook approve):', pushErr);
       }
+      try {
+        emitGlobal('handbook:approved', { id: handbook._id, pageNumber: handbook.pageNumber });
+      } catch (e) {}
     }
     res.json({ message: `Handbook ${status} successfully`, handbook });
   } catch (error) {
@@ -592,6 +596,9 @@ export const updateMemorandumStatus = async (req, res, next) => {
       } catch (pushErr) {
         console.error('Push send error (memorandum approve):', pushErr);
       }
+      try {
+        emitGlobal('memorandum:approved', { id: memorandum._id, title: memorandum.title });
+      } catch (e) {}
     }
     res.json({ message: `Memorandum ${status} successfully`, memorandum });
   } catch (error) {

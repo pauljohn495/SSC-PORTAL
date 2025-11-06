@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { publicAPI } from '../services/api';
 import { subscribeOnMessage } from '../firebase';
+import { onEvent } from '../realtime/socket';
 
 const NotificationDropdown = () => {
   const [notifications, setNotifications] = useState([]);
@@ -38,6 +39,18 @@ const NotificationDropdown = () => {
       if (navigator?.serviceWorker) {
         navigator.serviceWorker.removeEventListener('message', onSwMessage);
       }
+    };
+  }, []);
+
+  // Realtime: Socket.IO events
+  useEffect(() => {
+    const off1 = onEvent('notification:published', fetchNotifications);
+    const off2 = onEvent('handbook:approved', fetchNotifications);
+    const off3 = onEvent('memorandum:approved', fetchNotifications);
+    return () => {
+      off1 && off1();
+      off2 && off2();
+      off3 && off3();
     };
   }, []);
 

@@ -7,6 +7,7 @@ import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
+import { emitGlobal } from '../realtime/socket.js';
 
 // Upload memorandum
 export const uploadMemorandum = async (req, res, next) => {
@@ -444,12 +445,17 @@ export const publishNotification = async (req, res, next) => {
       // Continue even if email fails
     }
 
-    // Send push to all users (best-effort)
+    // Send push to all users 
     try {
       await sendPushToAllUsers(notification.title, notification.message);
     } catch (pushErr) {
       console.error('Error sending push notifications:', pushErr);
     }
+
+    // REAL TIME POPUP NOTIFICATION
+    try {
+      emitGlobal('notification:published', { id: notification._id, title: notification.title, message: notification.message, publishedAt: notification.publishedAt });
+    } catch (e) {}
 
     await logActivity(userId, 'notification_publish', `Notification "${notification.title}" published`, { 
       notificationId: notification._id, 
