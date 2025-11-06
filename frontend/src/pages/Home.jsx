@@ -99,12 +99,15 @@ const Home = () => {
                 </button>
                 {menuOpen && (
                   <div className='absolute right-0 mt-2 w-48 bg-white text-blue-950 rounded-lg shadow-lg z-10'>
-                    <button
-                      className='block w-full text-left px-4 py-2  cursor-pointer rounded-lg'
-                      onClick={handleLogout}
-                    >
-                      Logout
-                    </button>
+                    <ul className='py-2'>
+                      <li className='px-4 py-2'><Link to="/" className="hover:underline">Home</Link></li>
+                      <li className='px-4 py-2'><Link to="/student-handbook" className="hover:underline">Handbook</Link></li>
+                      <li className='px-4 py-2'><Link to="/memorandum" className="hover:underline">Memorandum</Link></li>
+                      <li className='px-4 py-2'><Link to="/buksu-calendar" className="hover:underline">BUKSU Calendar</Link></li>
+                      <li className='px-4 py-2'>
+                        <button onClick={handleLogout} className="hover:underline text-left w-full">Logout</button>
+                      </li>
+                    </ul>
                   </div>
                 )}
 
