@@ -35,7 +35,7 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await connectToDatabase();
-    
+
     const server = http.createServer(app);
     initSocket(server);
     server.listen(config.port, () => {

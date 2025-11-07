@@ -20,6 +20,12 @@ export const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     redirectUri: process.env.GOOGLE_REDIRECT_URI,
     calendarId: process.env.GOOGLE_CALENDAR_ID // optional; defaults to primary
+  },
+  algolia: {
+    appId: process.env.ALGOLIA_APP_ID,
+    adminApiKey: process.env.ALGOLIA_ADMIN_API_KEY,
+    searchApiKey: process.env.ALGOLIA_SEARCH_API_KEY,
+    indexName: process.env.ALGOLIA_INDEX_NAME || 'buksu_content'
   }
 };
 

@@ -7,6 +7,7 @@ import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
+import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 
 // Get all users
 export const getUsers = async (req, res, next) => {
@@ -509,6 +510,12 @@ export const updateHandbookStatus = async (req, res, next) => {
     handbook.status = status;
     await handbook.save();
 
+    try {
+      await saveHandbookToAlgolia(handbook);
+    } catch (algoliaError) {
+      console.error('Algolia sync (handbook) failed:', algoliaError);
+    }
+
     await logActivity('system_admin', 'handbook_approve', `Handbook page ${handbook.pageNumber} ${status}`, { 
       handbookId: id, 
       pageNumber: handbook.pageNumber, 
@@ -543,6 +550,12 @@ export const deleteHandbook = async (req, res, next) => {
     }
 
     await Handbook.findByIdAndDelete(id);
+
+    try {
+      await removeFromAlgolia(id.toString());
+    } catch (algoliaError) {
+      console.error('Algolia delete (handbook) failed:', algoliaError);
+    }
 
     await logActivity('system_admin', 'handbook_delete', `Handbook page ${handbook.pageNumber} deleted`, { 
       handbookId: id, 
@@ -583,6 +596,12 @@ export const updateMemorandumStatus = async (req, res, next) => {
     memorandum.status = status;
     await memorandum.save();
 
+    try {
+      await saveMemorandumToAlgolia(memorandum);
+    } catch (algoliaError) {
+      console.error('Algolia sync (memorandum) failed:', algoliaError);
+    }
+
     await logActivity('system_admin', 'memorandum_approve', `Memorandum "${memorandum.title}" ${status}`, { 
       memorandumId: id, 
       title: memorandum.title, 
@@ -617,6 +636,12 @@ export const deleteMemorandum = async (req, res, next) => {
     }
 
     await Memorandum.findByIdAndDelete(id);
+
+    try {
+      await removeFromAlgolia(id.toString());
+    } catch (algoliaError) {
+      console.error('Algolia delete (memorandum) failed:', algoliaError);
+    }
 
     await logActivity('system_admin', 'memorandum_delete', `Memorandum deleted: "${memorandum.title}"`, { 
       memorandumId: id, 

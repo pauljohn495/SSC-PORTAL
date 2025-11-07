@@ -22,6 +22,7 @@ import PresidentNotifications from './pages/PresidentNotifications'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
 import BuksuCalendar from './pages/BuksuCalendar'
 import PresidentCalendar from './pages/PresidentCalendar'
+import Search from './pages/Search'
 import { subscribeOnMessage } from './firebase'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -96,6 +97,7 @@ function App() {
           <Route path="/president-activity-logs" element={<PresidentActivityLogs />} />
           <Route path="/buksu-calendar" element={<BuksuCalendar />} />
           <Route path="/president-calendar" element={<PresidentCalendar />} />
+          <Route path="/search" element={<Search />} />
         </Routes>
       </Router>
     </AuthProvider>
