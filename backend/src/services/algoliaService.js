@@ -1,7 +1,6 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const algoliaPackage = require('algoliasearch');
-const clientSearch = require('@algolia/client-search');
 const algoliasearch =
   typeof algoliaPackage === 'function'
     ? algoliaPackage
@@ -13,8 +12,11 @@ if (typeof algoliasearch !== 'function') {
   throw new Error('Failed to load Algolia client factory.');
 }
 import { config } from '../config/index.js';
+import Handbook from '../models/Handbook.js';
+import Memorandum from '../models/Memorandum.js';
 
 let client = null;
+let index = null;
 
 const isAlgoliaConfigured = () => {
   return Boolean(
@@ -31,13 +33,53 @@ const getClient = () => {
 
   if (!client) {
     client = algoliasearch(config.algolia.appId, config.algolia.adminApiKey);
-    console.log('[Algolia] client type:', typeof client, 'keys:', Object.keys(client || {}));
-    if (!client || typeof client.initIndex !== 'function') {
-      console.error('Algolia client missing initIndex. Inspect client:', client);
-    }
   }
 
   return client;
+};
+
+const buildIndexWrapper = (algoliaClient) => {
+  const indexName = config.algolia.indexName;
+
+  return {
+    saveObject: (payload) => algoliaClient.saveObject({
+      indexName,
+      body: payload
+    }),
+    deleteObject: (objectID) => algoliaClient.deleteObject({
+      indexName,
+      objectID
+    }),
+    search: (query, searchParams) => algoliaClient.searchSingleIndex({
+      indexName,
+      searchParams: {
+        ...searchParams,
+        query
+      }
+    })
+  };
+};
+
+const getIndex = () => {
+  const algoliaClient = getClient();
+  if (!algoliaClient) {
+    return null;
+  }
+
+  if (!index) {
+    if (typeof algoliaClient.initIndex === 'function') {
+      index = algoliaClient.initIndex(config.algolia.indexName);
+    } else if (
+      typeof algoliaClient.saveObject === 'function' &&
+      typeof algoliaClient.searchSingleIndex === 'function'
+    ) {
+      index = buildIndexWrapper(algoliaClient);
+    } else {
+      return null;
+    }
+  }
+
+  return index;
 };
 
 const baseDocument = (data) => ({
@@ -54,18 +96,8 @@ const baseDocument = (data) => ({
   version: data.version ?? 1
 });
 
-export const saveHandbookToAlgolia = async (handbook) => {
-  if (!isAlgoliaConfigured() || !handbook) return;
-
-  if (handbook.status !== 'approved') {
-    await removeFromAlgolia(handbook._id);
-    return;
-  }
-
-  const algoliaClient = getClient();
-  if (!algoliaClient) return;
-
-  const document = baseDocument({
+const buildHandbookDocument = (handbook) => ({
+  ...baseDocument({
     id: handbook._id.toString(),
     type: 'handbook',
     title: `Handbook Page ${handbook.pageNumber}`,
@@ -76,12 +108,39 @@ export const saveHandbookToAlgolia = async (handbook) => {
     createdAt: handbook.createdAt?.toISOString?.() || new Date().toISOString(),
     uploadedAt: handbook.updatedAt?.toISOString?.() || handbook.createdAt?.toISOString?.(),
     version: handbook.version
-  });
+  })
+});
 
-  await algoliaClient.saveObject({
-    indexName: config.algolia.indexName,
-    body: document
-  }).catch((error) => {
+const buildMemorandumDocument = (memorandum) => ({
+  ...baseDocument({
+    id: memorandum._id.toString(),
+    type: 'memorandum',
+    title: memorandum.title || 'Memorandum',
+    content: memorandum.title || '',
+    status: memorandum.status,
+    visibility: 'student',
+    year: memorandum.year,
+    createdAt: memorandum.uploadedAt?.toISOString?.() || new Date().toISOString(),
+    uploadedAt: memorandum.uploadedAt?.toISOString?.(),
+    version: memorandum.version
+  }),
+  fileUrl: memorandum.fileUrl || ''
+});
+
+export const saveHandbookToAlgolia = async (handbook) => {
+  if (!isAlgoliaConfigured() || !handbook) return;
+
+  if (handbook.status !== 'approved') {
+    await removeFromAlgolia(handbook._id);
+    return;
+  }
+
+  const algoliaIndex = getIndex();
+  if (!algoliaIndex) return;
+
+  const document = buildHandbookDocument(handbook);
+
+  await algoliaIndex.saveObject(document).catch((error) => {
     console.error('Algolia save (handbook) failed:', error);
   });
 };
@@ -94,26 +153,12 @@ export const saveMemorandumToAlgolia = async (memorandum) => {
     return;
   }
 
-  const algoliaClient = getClient();
-  if (!algoliaClient) return;
+  const algoliaIndex = getIndex();
+  if (!algoliaIndex) return;
 
-  const document = baseDocument({
-    id: memorandum._id.toString(),
-    type: 'memorandum',
-    title: memorandum.title || 'Memorandum',
-    content: memorandum.title || '',
-    status: memorandum.status,
-    visibility: 'student',
-    year: memorandum.year,
-    createdAt: memorandum.uploadedAt?.toISOString?.() || new Date().toISOString(),
-    uploadedAt: memorandum.uploadedAt?.toISOString?.(),
-    version: memorandum.version
-  });
+  const document = buildMemorandumDocument(memorandum);
 
-  await algoliaClient.saveObject({
-    indexName: config.algolia.indexName,
-    body: document
-  }).catch((error) => {
+  await algoliaIndex.saveObject(document).catch((error) => {
     console.error('Algolia save (memorandum) failed:', error);
   });
 };
@@ -121,13 +166,10 @@ export const saveMemorandumToAlgolia = async (memorandum) => {
 export const removeFromAlgolia = async (id) => {
   if (!isAlgoliaConfigured() || !id) return;
 
-  const algoliaClient = getClient();
-  if (!algoliaClient) return;
+  const algoliaIndex = getIndex();
+  if (!algoliaIndex) return;
 
-  await algoliaClient.deleteObject({
-    indexName: config.algolia.indexName,
-    objectID: id.toString()
-  }).catch((error) => {
+  await algoliaIndex.deleteObject(id.toString()).catch((error) => {
     if (error?.status === 404) return;
     console.error('Algolia delete failed:', error);
   });
@@ -144,8 +186,8 @@ export const searchAlgolia = async ({ query, role = 'student', type, year, page 
     throw new Error('Search service not configured');
   }
 
-  const algoliaClient = getClient();
-  if (!algoliaClient) {
+  const algoliaIndex = getIndex();
+  if (!algoliaIndex) {
     throw new Error('Search client not available');
   }
 
@@ -186,14 +228,72 @@ export const searchAlgolia = async ({ query, role = 'student', type, year, page 
     highlightPostTag: '</mark>'
   };
 
-  const response = await algoliaClient.searchSingleIndex({
-    indexName: config.algolia.indexName,
-    searchParams: {
+  const response = await algoliaIndex.search(query || '', searchParams);
+
+  const totalHits = response?.nbHits ?? 0;
+  if (totalHits === 0 && filters.length > 1) {
+    const fallbackFilters = 'status:"approved"';
+    const fallbackResponse = await algoliaIndex.search(query || '', {
       ...searchParams,
-      query: query || ''
+      filters: fallbackFilters
+    });
+
+    if ((fallbackResponse?.nbHits ?? 0) > 0) {
+      return {
+        ...fallbackResponse,
+        __usedFallbackFilters: true,
+        __originalFilters: searchParams.filters
+      };
     }
-  });
+  }
+
   return response;
+};
+
+const saveDocumentsInBatches = async (algoliaIndex, documents) => {
+  if (!documents.length) return;
+
+  if (typeof algoliaIndex.replaceAllObjects === 'function') {
+    await algoliaIndex.replaceAllObjects(documents);
+    return;
+  }
+
+  if (typeof algoliaIndex.saveObjects === 'function') {
+    await algoliaIndex.saveObjects(documents);
+    return;
+  }
+
+  for (const doc of documents) {
+    // eslint-disable-next-line no-await-in-loop
+    await algoliaIndex.saveObject(doc);
+  }
+};
+
+export const rebuildAlgoliaIndex = async () => {
+  if (!isAlgoliaConfigured()) {
+    console.info('[Algolia] Skipping rebuild; service not configured.');
+    return;
+  }
+
+  const algoliaIndex = getIndex();
+  if (!algoliaIndex) {
+    console.warn('[Algolia] Unable to rebuild index: client unavailable.');
+    return;
+  }
+
+  const [handbooks, memorandums] = await Promise.all([
+    Handbook.find({ status: 'approved' }).lean().exec(),
+    Memorandum.find({ status: 'approved' }).lean().exec()
+  ]);
+
+  const documents = [
+    ...handbooks.map((handbook) => buildHandbookDocument(handbook)),
+    ...memorandums.map((memorandum) => buildMemorandumDocument(memorandum))
+  ];
+
+  await saveDocumentsInBatches(algoliaIndex, documents);
+
+  console.info('[Algolia] Rebuilt index with', documents.length, 'documents.');
 };
 
 

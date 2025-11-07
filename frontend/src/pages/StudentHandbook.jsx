@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
 import jsPDF from 'jspdf'
@@ -11,9 +11,11 @@ const StudentHandbook = () => {
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [searchQuery, setSearchQuery] = useState('')
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
+  const [pendingPage, setPendingPage] = useState(null)
   const downloadMenuRef = useRef(null)
   const { logout, user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
     fetchHandbook()
@@ -30,6 +32,22 @@ const StudentHandbook = () => {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.has('page')) {
+      const pageValue = Number(params.get('page'))
+      if (!Number.isNaN(pageValue)) {
+        setPendingPage(pageValue)
+      }
+    }
+    if (params.has('q')) {
+      const qValue = params.get('q') || ''
+      if (qValue !== searchQuery) {
+        setSearchQuery(qValue)
+      }
+    }
+  }, [location.search])
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -86,6 +104,21 @@ const StudentHandbook = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
+
+  useEffect(() => {
+    if (pendingPage == null || sortedPages.length === 0) return
+
+    const targetIndex = sortedPages.findIndex((page, index) => {
+      const pageNumber = page.pageNumber || index + 1
+      return Number(pageNumber) === Number(pendingPage)
+    })
+
+    if (targetIndex >= 0) {
+      setCurrentPageIndex(targetIndex)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    setPendingPage(null)
+  }, [pendingPage, sortedPages])
 
   const goToPrevious = () => {
     if (currentPageIndex > 0) {

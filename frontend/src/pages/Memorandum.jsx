@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
 
@@ -9,10 +9,19 @@ const Memorandum = () => {
   const [memorandums, setMemorandums] = useState([])
   const { logout, user } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [highlightMemoId, setHighlightMemoId] = useState(null)
 
   useEffect(() => {
     fetchMemorandums()
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.has('memoId')) {
+      setHighlightMemoId(params.get('memoId'))
+    }
+  }, [location.search])
 
   const fetchMemorandums = async () => {
     try {
@@ -23,6 +32,14 @@ const Memorandum = () => {
       console.error('Error fetching memorandums:', error)
     }
   }
+
+  useEffect(() => {
+    if (!highlightMemoId) return
+    const element = document.getElementById(`memo-${highlightMemoId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [highlightMemoId, memorandums])
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -131,7 +148,11 @@ const Memorandum = () => {
                 <h2 className='text-3xl font-bold text-center mb-8 text-blue-950'>YEAR {year} SCHOOL MEMOS</h2>
                 <div className='space-y-4'>
                   {groupedMemorandums[year].map((memo, index) => (
-                    <div key={memo._id} className='flex items-center space-x-4'>
+                    <div
+                      key={memo._id}
+                      id={`memo-${memo._id}`}
+                      className={`flex items-center space-x-4 rounded-lg p-4 transition-shadow ${highlightMemoId === memo._id ? 'bg-blue-50 ring-2 ring-blue-500 shadow-md' : ''}`}
+                    >
                       <button
                         onClick={() => handleViewPDF(memo.fileUrl)}
                         className='bg-red-600 text-white px-6 py-3 rounded font-bold hover:bg-red-700 transition-colors text-sm whitespace-nowrap'

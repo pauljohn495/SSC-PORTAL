@@ -8,6 +8,7 @@ import { initSocket } from './src/realtime/socket.js';
 import { errorHandler } from './src/middleware/errorHandler.js';
 import { notFound } from './src/middleware/notFound.js';
 import { startPriorityCleanupInterval } from './src/utils/priorityCleanup.js';
+import { rebuildAlgoliaIndex } from './src/services/algoliaService.js';
 
 const app = express();
 
@@ -45,6 +46,10 @@ const startServer = async () => {
 
     // Start priority cleanup interval
     startPriorityCleanupInterval();
+
+    rebuildAlgoliaIndex().catch((error) => {
+      console.error('[Algolia] Rebuild failed:', error);
+    });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

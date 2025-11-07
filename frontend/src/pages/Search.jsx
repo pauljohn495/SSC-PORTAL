@@ -1,11 +1,12 @@
-import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import React, { useEffect, useState, useCallback } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
 
 const Search = () => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -24,9 +25,8 @@ const Search = () => {
     navigate('/login')
   }
 
-  const handleSearch = async (event) => {
-    event.preventDefault()
-    if (!query.trim()) {
+  const performSearch = useCallback(async (searchQuery, overriddenType, overriddenYear) => {
+    if (!searchQuery.trim()) {
       setError('Please enter a search term.')
       setResults([])
       setSearched(false)
@@ -38,13 +38,15 @@ const Search = () => {
 
     try {
       const params = new URLSearchParams()
-      params.set('q', query.trim())
+      params.set('q', searchQuery.trim())
       params.set('role', user?.role || 'student')
-      if (typeFilter && typeFilter !== 'all') {
-        params.set('type', typeFilter)
+      const effectiveType = overriddenType ?? typeFilter
+      const effectiveYear = overriddenYear ?? yearFilter
+      if (effectiveType && effectiveType !== 'all') {
+        params.set('type', effectiveType)
       }
-      if (yearFilter) {
-        params.set('year', yearFilter)
+      if (effectiveYear) {
+        params.set('year', effectiveYear)
       }
 
       const response = await fetch(`/api/search?${params.toString()}`)
@@ -63,6 +65,58 @@ const Search = () => {
       setSearched(true)
     } finally {
       setLoading(false)
+    }
+  }, [typeFilter, yearFilter, user?.role])
+
+  const handleSearch = async (event) => {
+    event.preventDefault()
+    await performSearch(query, typeFilter, yearFilter)
+  }
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const initialQuery = params.get('q') || ''
+    const initialType = params.get('type') || 'all'
+    const initialYear = params.get('year') || ''
+
+    let shouldTriggerSearch = false
+
+    if (initialQuery && initialQuery !== query) {
+      setQuery(initialQuery)
+      shouldTriggerSearch = true
+    }
+    if (initialType !== typeFilter) {
+      setTypeFilter(initialType)
+      shouldTriggerSearch = true
+    }
+    if (initialYear !== yearFilter) {
+      setYearFilter(initialYear)
+      shouldTriggerSearch = true
+    }
+
+    if (initialQuery && shouldTriggerSearch) {
+      performSearch(initialQuery, initialType, initialYear)
+    }
+  }, [location.search, performSearch])
+
+  const handleResultClick = (item) => {
+    if (item.type === 'handbook') {
+      const params = new URLSearchParams()
+      if (item.pageNumber) {
+        params.set('page', item.pageNumber)
+      }
+      if (query.trim()) {
+        params.set('q', query.trim())
+      }
+      navigate(`/student-handbook${params.toString() ? `?${params.toString()}` : ''}`)
+      return
+    }
+
+    if (item.type === 'memorandum') {
+      const params = new URLSearchParams()
+      params.set('memoId', item.id)
+      navigate(`/memorandum?${params.toString()}`)
+      return
     }
   }
 
@@ -190,20 +244,32 @@ const Search = () => {
           {results.length > 0 && (
             <ul className='space-y-4'>
               {results.map((item) => (
-                <li key={item.id} className='border border-gray-200 rounded-lg p-4 hover:shadow-sm transition'>
-                  <div className='flex items-center justify-between mb-2'>
-                    <span className='uppercase text-xs font-semibold tracking-wider text-blue-700'>
-                      {item.type}
-                    </span>
-                    <span className='text-xs text-gray-500'>
-                      {item.type === 'handbook' && item.pageNumber ? `Page ${item.pageNumber}` : ''}
-                      {item.type === 'memorandum' && item.year ? `Year ${item.year}` : ''}
-                    </span>
-                  </div>
-                  <h2 className='text-lg font-semibold text-blue-950 mb-2' dangerouslySetInnerHTML={{ __html: item.titleSnippet || item.title }}></h2>
-                  {item.snippet && (
-                    <p className='text-sm text-gray-700 leading-relaxed' dangerouslySetInnerHTML={{ __html: `${item.snippet}` }}></p>
-                  )}
+                <li key={item.id}>
+                  <button
+                    type='button'
+                    onClick={() => handleResultClick(item)}
+                    className='w-full text-left border border-gray-200 rounded-lg p-4 hover:shadow-md transition bg-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+                  >
+                    <div className='flex items-center justify-between mb-2'>
+                      <span className='uppercase text-xs font-semibold tracking-wider text-blue-700'>
+                        {item.type}
+                      </span>
+                      <span className='text-xs text-gray-500'>
+                        {item.type === 'handbook' && item.pageNumber ? `Page ${item.pageNumber}` : ''}
+                        {item.type === 'memorandum' && item.year ? `Year ${item.year}` : ''}
+                      </span>
+                    </div>
+                    <h2
+                      className='text-lg font-semibold text-blue-950 mb-2'
+                      dangerouslySetInnerHTML={{ __html: item.titleSnippet || item.title }}
+                    ></h2>
+                    {item.snippet && (
+                      <p
+                        className='text-sm text-gray-700 leading-relaxed'
+                        dangerouslySetInnerHTML={{ __html: `${item.snippet}` }}
+                      ></p>
+                    )}
+                  </button>
                 </li>
               ))}
             </ul>
