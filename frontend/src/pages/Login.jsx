@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
 import buksunew from '../assets/buksu-new.png'
+import bgimage from '../assets/bg-image.jpg'
 
 function Login() {
   const { login } = useAuth();
@@ -141,8 +142,16 @@ const handleForgotPassword = async (e) => {
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Logo and Welcome */}
-      <div className="hidden lg:flex lg:w-1/2 bg-blue-950 text-white flex-col items-center justify-center px-12">
-        <div className="flex flex-col items-center space-y-8">
+      <div
+        className="hidden lg:flex lg:w-1/2 relative text-white flex-col items-center justify-center px-12"
+        style={{
+          backgroundImage: `url(${bgimage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
+        <div className="absolute inset-0 bg-black/50"></div>
+        <div className="relative flex flex-col items-center space-y-8">
           <img
             src={buksunew}
             alt="BUKSU Logo"
@@ -150,13 +159,10 @@ const handleForgotPassword = async (e) => {
           />
           <div className="text-center space-y-4">
             <h1 className="text-4xl font-bold">Welcome</h1>
-            <p className="text-xl text-blue-200">
+            <p className="text-xl text-white font-bold">
               BUKIDNON STATE UNIVERSITY
             </p>
-            <p className="text-lg text-blue-300">
-              SUPREME STUDENT COUNCIL
-            </p>
-            <p className="text-base text-blue-200 mt-6 max-w-md">
+            <p className="text-base text-white max-w-md">
               Access your SSC Portal to stay informed with the latest school updates, announcements, and access to the student handbook.
             </p>
           </div>

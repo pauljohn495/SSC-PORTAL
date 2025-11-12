@@ -315,6 +315,14 @@ const ManageUsers = () => {
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600'>
                             <p><span className='font-medium'>Email:</span> {user.email}</p>
                             {user.username && <p><span className='font-medium'>Username:</span> {user.username}</p>}
+                            <p>
+                              <span className='font-medium'>Department:</span>{' '}
+                              {user.department || <span className='italic text-gray-400'>Not set</span>}
+                            </p>
+                            <p>
+                              <span className='font-medium'>Course:</span>{' '}
+                              {user.course || <span className='italic text-gray-400'>Not set</span>}
+                            </p>
                             {user.createdAt && (
                               <p><span className='font-medium'>Registered:</span> {new Date(user.createdAt).toLocaleDateString('en-US', { 
                                 year: 'numeric', 
@@ -330,7 +338,7 @@ const ManageUsers = () => {
                           title='Delete user'
                         >
                           <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1-1 0 00-1 1v3M4 7h16' />
                           </svg>
                         </button>
                       </div>

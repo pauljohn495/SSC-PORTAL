@@ -65,6 +65,10 @@ export const authAPI = {
     method: 'POST',
     body: { userId, fcmToken },
   }),
+  updateProfile: (userId, data) => apiRequest(`/auth/profile/${userId}`, {
+    method: 'PUT',
+    body: data,
+  }),
 };
 
 // Admin API

@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
-import buksublack from '../assets/buksu-black.png'
+import ProfileSetupModal from '../components/ProfileSetupModal'
+import { authAPI } from '../services/api'
 import bgimage from '../assets/bg-image.jpg'
 import buksunew from '../assets/buksu-new.png'
 const Home = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [profileError, setProfileError] = useState('')
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
   const navigate = useNavigate()
-  const { user, logout, loading: authLoading } = useAuth()
+  const { user, logout, loading: authLoading, updateUser } = useAuth()
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -17,6 +21,20 @@ const Home = () => {
       navigate('/login')
     }
   }, [user, authLoading, navigate])
+
+  useEffect(() => {
+    if (!authLoading && user && user.role === 'student' && !user.profileCompleted) {
+      setShowProfileModal(true)
+    } else {
+      setShowProfileModal(false)
+    }
+  }, [authLoading, user])
+
+  useEffect(() => {
+    if (showProfileModal) {
+      setProfileError('')
+    }
+  }, [showProfileModal])
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
@@ -52,6 +70,30 @@ const Home = () => {
     navigate('/login')
   }
 
+  const handleProfileSubmit = async ({ department, course }) => {
+    if (!user?._id) {
+      return
+    }
+
+    try {
+      setProfileError('')
+      setIsSavingProfile(true)
+      const response = await authAPI.updateProfile(user._id, { department, course })
+      if (response?.user) {
+        updateUser(response.user)
+      }
+      setShowProfileModal(false)
+    } catch (error) {
+      setProfileError(error.message || 'Failed to save your information. Please try again.')
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  const handleProfileCancel = () => {
+    handleLogout()
+  }
+
   const handleHomeSearch = (event) => {
     event.preventDefault()
     if (!homeSearch.trim()) {
@@ -70,6 +112,16 @@ const Home = () => {
 
   return (
     <div className='s text-black w-full min-h-screen flex flex-col'>
+      {user.role === 'student' && (
+        <ProfileSetupModal
+          isOpen={showProfileModal}
+          onSubmit={handleProfileSubmit}
+          onCancel={handleProfileCancel}
+          isSaving={isSavingProfile}
+          errorMessage={profileError}
+        />
+      )}
+
       {/* Header */}
       <header className='bg-blue-950 text-white p-4 flex justify-between items-center' style={{ height: '64px' }}>
         <div className='flex items-center space-x-4' style={{ height: '100%' }}>

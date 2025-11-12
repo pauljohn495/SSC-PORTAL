@@ -8,6 +8,9 @@ const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, sparse: true }, // For manual admin login, unique when present
   password: String, // For manual admin login
   role: { type: String, default: 'student' },
+  department: { type: String },
+  course: { type: String },
+  profileCompleted: { type: Boolean, default: false },
   resetToken: String,
   resetTokenExpiry: Date,
   fcmTokens: { type: [String], default: [] },

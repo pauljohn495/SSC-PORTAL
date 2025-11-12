@@ -27,13 +27,26 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
+  const updateStoredUser = (updater) => {
+    setUser(prevUser => {
+      const nextUser = typeof updater === 'function' ? updater(prevUser) : updater;
+
+      if (nextUser) {
+        localStorage.setItem('user', JSON.stringify(nextUser));
+      } else {
+        localStorage.removeItem('user');
+      }
+
+      return nextUser || null;
+    });
+  };
+
   const login = (userData) => {
     if (!userData || !userData.role) {
       console.error('Invalid user data provided');
       return;
     }
-    setUser(userData);
-    localStorage.setItem('user', JSON.stringify(userData));
+    updateStoredUser(userData);
 
     // Best-effort: register FCM token for this user
     (async () => {
@@ -83,8 +96,30 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+    updateStoredUser(null);
+  };
+
+  const updateUser = (updates) => {
+    if (!updates) {
+      return;
+    }
+
+    updateStoredUser(prevUser => {
+      if (!prevUser) {
+        return updates;
+      }
+
+      const nextUser = {
+        ...prevUser,
+        ...updates
+      };
+
+      if (!nextUser.role && prevUser.role) {
+        nextUser.role = prevUser.role;
+      }
+
+      return nextUser;
+    });
   };
 
   const value = {
@@ -92,7 +127,8 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     loading,
-    isAdmin
+    isAdmin,
+    updateUser
   };
 
   return (

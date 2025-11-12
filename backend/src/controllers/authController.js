@@ -4,6 +4,27 @@ import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import mongoose from 'mongoose';
 
+const ensureProfileCompletedFlag = (user) => {
+  if (user && user.department && user.course && !user.profileCompleted) {
+    user.profileCompleted = true;
+  }
+};
+
+const buildUserResponse = (user) => ({
+  _id: user._id,
+  email: user.email,
+  name: user.name,
+  username: user.username,
+  role: user.role,
+  picture: user.picture,
+  googleId: user.googleId,
+  department: user.department || null,
+  course: user.course || null,
+  profileCompleted: typeof user.profileCompleted === 'boolean'
+    ? user.profileCompleted
+    : Boolean(user.department && user.course)
+});
+
 // Verify reCAPTCHA token
 const verifyRecaptcha = async (token) => {
   // In development mode without secret key, skip verification
@@ -76,6 +97,7 @@ export const googleAuth = async (req, res, next) => {
       }
       
       user = new User({ email, name, picture, googleId, role: 'student' });
+      ensureProfileCompletedFlag(user);
       await user.save();
     } else {
       // Existing user - check role and email domain
@@ -92,6 +114,7 @@ export const googleAuth = async (req, res, next) => {
         if (picture && !user.picture) {
           user.picture = picture;
         }
+        ensureProfileCompletedFlag(user);
         await user.save();
       } else if (user.role === 'admin') {
         // Admins use manual login, not Google OAuth
@@ -121,6 +144,7 @@ export const googleAuth = async (req, res, next) => {
         if (!user.role) {
           user.role = 'student';
         }
+        ensureProfileCompletedFlag(user);
         await user.save();
       }
     }
@@ -131,17 +155,7 @@ export const googleAuth = async (req, res, next) => {
     }, req);
 
     // Return user object with all necessary fields
-    const userResponse = {
-      _id: user._id,
-      email: user.email,
-      name: user.name,
-      username: user.username,
-      role: user.role,
-      picture: user.picture,
-      googleId: user.googleId
-    };
-
-    res.json({ user: userResponse });
+    res.json({ user: buildUserResponse(user) });
   } catch (error) {
     next(error);
   }
@@ -198,17 +212,7 @@ export const adminLogin = async (req, res, next) => {
     }, req);
 
     // Return user object with all necessary fields
-    const userResponse = {
-      _id: user._id,
-      email: user.email,
-      name: user.name,
-      username: user.username,
-      role: 'admin',
-      picture: user.picture,
-      googleId: user.googleId
-    };
-
-    res.json({ user: userResponse });
+    res.json({ user: buildUserResponse(user) });
   } catch (error) {
     console.error('Admin login error:', error);
     next(error);
@@ -518,6 +522,40 @@ export const registerFcmToken = async (req, res, next) => {
     }
 
     res.json({ message: 'FCM token registered' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { department, course } = req.body;
+
+    if (!department || !course) {
+      return res.status(400).json({ message: 'Department and course are required' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.department = department;
+    user.course = course;
+    user.profileCompleted = true;
+
+    await user.save();
+
+    await logActivity(
+      user._id,
+      'profile_update',
+      'User updated profile information',
+      { department, course },
+      req
+    );
+
+    res.json({ user: buildUserResponse(user) });
   } catch (error) {
     next(error);
   }
