@@ -13,7 +13,10 @@ import { rebuildAlgoliaIndex } from './src/services/algoliaService.js';
 const app = express();
 
 // Middleware
-app.use(cors({ origin: config.corsOrigin.split(',') }));
+app.use(cors({ 
+  origin: config.corsOrigin.split(','),
+  exposedHeaders: ['X-API-Log']
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 

@@ -111,21 +111,32 @@ const buildHandbookDocument = (handbook) => ({
   })
 });
 
-const buildMemorandumDocument = (memorandum) => ({
-  ...baseDocument({
-    id: memorandum._id.toString(),
-    type: 'memorandum',
-    title: memorandum.title || 'Memorandum',
-    content: memorandum.title || '',
-    status: memorandum.status,
-    visibility: 'student',
-    year: memorandum.year,
-    createdAt: memorandum.uploadedAt?.toISOString?.() || new Date().toISOString(),
-    uploadedAt: memorandum.uploadedAt?.toISOString?.(),
-    version: memorandum.version
-  }),
-  fileUrl: memorandum.fileUrl || ''
-});
+const buildMemorandumDocument = (memorandum) => {
+  // Combine title, fileName, and PDF content for searchable content
+  const searchableContent = [
+    memorandum.title || '',
+    memorandum.fileName || '',
+    memorandum.pdfContent || ''
+  ].filter(Boolean).join(' ').trim();
+  
+  return {
+    ...baseDocument({
+      id: memorandum._id.toString(),
+      type: 'memorandum',
+      title: memorandum.title || 'Memorandum',
+      content: searchableContent || memorandum.title || '',
+      status: memorandum.status,
+      visibility: 'student',
+      year: memorandum.year,
+      createdAt: memorandum.uploadedAt?.toISOString?.() || new Date().toISOString(),
+      uploadedAt: memorandum.uploadedAt?.toISOString?.(),
+      version: memorandum.version
+    }),
+    fileUrl: memorandum.fileUrl || '',
+    fileName: memorandum.fileName || '',
+    pdfContent: memorandum.pdfContent || ''
+  };
+};
 
 export const saveHandbookToAlgolia = async (handbook) => {
   if (!isAlgoliaConfigured() || !handbook) return;
@@ -223,7 +234,7 @@ export const searchAlgolia = async ({ query, role = 'student', type, year, page 
     page,
     hitsPerPage,
     filters: filters.join(' AND '),
-    attributesToHighlight: ['title', 'content'],
+    attributesToHighlight: ['title', 'content', 'fileName', 'pdfContent'],
     highlightPreTag: '<mark>',
     highlightPostTag: '</mark>'
   };

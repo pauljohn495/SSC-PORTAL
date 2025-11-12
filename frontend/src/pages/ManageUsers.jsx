@@ -26,10 +26,11 @@ const ManageUsers = () => {
 
   const fetchUsers = async () => {
     try {
+      setLoading(true);
       const response = await fetch('http://localhost:5001/api/admin/users');
       const data = await response.json();
-      const filteredUsers = data.filter(user => user.role === 'admin' || user.role === 'president');
-      setUsers(filteredUsers);
+      // Show all users, not just admin and president
+      setUsers(data);
     } catch (error) {
       console.error('Error fetching users:', error);
     } finally {
@@ -291,60 +292,54 @@ const ManageUsers = () => {
           {loading ? (
             <p>Loading...</p>
           ) : (
-            <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
-              {/* Presidents Section */}
-              <div>
-                <h2 className='text-2xl font-bold mb-4 text-blue-950'>Presidents</h2>
-                <div className='grid grid-cols-1 gap-6'>
-                  {users.filter(user => user.role === 'president').length > 0 ? (
-                    users.filter(user => user.role === 'president').map((user) => (
-                      <div key={user._id} className='bg-white p-6 rounded-lg shadow-md relative'>
+            <div className='bg-white rounded-lg shadow-md'>
+              <div className='p-6 border-b border-gray-200'>
+                <h2 className='text-2xl font-bold text-blue-950'>All Registered Users ({users.length})</h2>
+              </div>
+              {users.length > 0 ? (
+                <div className='divide-y divide-gray-200'>
+                  {users.map((user, index) => (
+                    <div key={user._id} className={`p-6 hover:bg-gray-50 transition-colors ${index === 0 ? 'rounded-t-lg' : ''} ${index === users.length - 1 ? 'rounded-b-lg' : ''}`}>
+                      <div className='flex items-center justify-between'>
+                        <div className='flex-1'>
+                          <div className='flex items-center space-x-3 mb-2'>
+                            <h3 className='text-lg font-semibold text-gray-800'>{user.name || user.email}</h3>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              user.role === 'admin' ? 'bg-blue-100 text-blue-800' :
+                              user.role === 'president' ? 'bg-purple-100 text-purple-800' :
+                              'bg-green-100 text-green-800'
+                            }`}>
+                              {user.role?.toUpperCase() || 'STUDENT'}
+                            </span>
+                          </div>
+                          <div className='grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600'>
+                            <p><span className='font-medium'>Email:</span> {user.email}</p>
+                            {user.username && <p><span className='font-medium'>Username:</span> {user.username}</p>}
+                            {user.createdAt && (
+                              <p><span className='font-medium'>Registered:</span> {new Date(user.createdAt).toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              })}</p>
+                            )}
+                          </div>
+                        </div>
                         <button
                           onClick={() => handleDeleteUser(user._id)}
-                          className='absolute top-2 right-2 text-red-500 hover:text-red-700 transition-colors'
+                          className='ml-4 text-red-500 hover:text-red-700 transition-colors p-2'
                           title='Delete user'
                         >
                           <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                             <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
                           </svg>
                         </button>
-                        <p className='text-sm text-gray-600 mb-2'>Email: {user.email}</p>
-                        <p className='text-sm text-gray-600 mb-2'>Role: {user.role}</p>
                       </div>
-                    ))
-                  ) : (
-                    <p className='text-center text-gray-500'>No presidents available.</p>
-                  )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-
-              {/* Admins Section */}
-              <div>
-                <h2 className='text-2xl font-bold mb-4 text-blue-950'>Admins</h2>
-                <div className='grid grid-cols-1 gap-6'>
-                  {users.filter(user => user.role === 'admin').length > 0 ? (
-                    users.filter(user => user.role === 'admin').map((user) => (
-                      <div key={user._id} className='bg-white p-6 rounded-lg shadow-md relative'>
-                        <button
-                          onClick={() => handleDeleteUser(user._id)}
-                          className='absolute top-2 right-2 text-red-500 hover:text-red-700 transition-colors'
-                          title='Delete user'
-                        >
-                          <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
-                          </svg>
-                        </button>
-                        <h3 className='text-xl font-semibold text-gray-800 mb-2'>{user.name}</h3>
-                        <p className='text-sm text-gray-600 mb-2'>Email: {user.email}</p>
-                        <p className='text-sm text-gray-600 mb-2'>Role: {user.role}</p>
-                        <p className='text-sm text-gray-600'>Username: {user.username || 'N/A'}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className='text-center text-gray-500'>No admins available.</p>
-                  )}
-                </div>
-              </div>
+              ) : (
+                <div className='text-center py-12 text-gray-500'>No users found.</div>
+              )}
             </div>
           )}
         </div>

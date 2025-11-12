@@ -7,14 +7,28 @@ import NotificationDropdown from '../components/NotificationDropdown'
 const Memorandum = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [memorandums, setMemorandums] = useState([])
-  const { logout, user } = useAuth()
+  const { logout, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [highlightMemoId, setHighlightMemoId] = useState(null)
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    fetchMemorandums()
-  }, [])
+    if (!authLoading && !user) {
+      navigate('/login')
+    }
+  }, [user, authLoading, navigate])
+
+  useEffect(() => {
+    if (user) {
+      fetchMemorandums()
+    }
+  }, [user])
+
+  // Show loading or nothing while checking auth
+  if (authLoading || !user) {
+    return null
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -160,6 +174,9 @@ const Memorandum = () => {
                         SCHOOL MEMO {index + 1}
                       </button>
                       <p className='text-black text-lg flex-1'>{memo.title}</p>
+                      {memo.fileName && (
+                        <p className='text-gray-600 text-sm whitespace-nowrap'>{memo.fileName}</p>
+                      )}
                     </div>
                   ))}
                 </div>

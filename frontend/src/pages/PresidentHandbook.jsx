@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { logApiResponse } from '../utils/fetchWithLogging';
 
 const PresidentHandbook = () => {
   const { logout, user } = useAuth();
@@ -60,6 +61,7 @@ const PresidentHandbook = () => {
         })
       });
 
+      logApiResponse(response);
       const data = await response.json();
       
       if (response.ok) {
@@ -90,6 +92,7 @@ const PresidentHandbook = () => {
         body: JSON.stringify({ userId: user._id })
       });
 
+      logApiResponse(priorityResponse);
       const priorityData = await priorityResponse.json();
 
       if (priorityData.hasPriority) {
@@ -143,6 +146,7 @@ const PresidentHandbook = () => {
         })
       });
 
+      logApiResponse(response);
       const data = await response.json();
       
       if (response.ok) {
@@ -169,11 +173,12 @@ const PresidentHandbook = () => {
     // Clear priority if we have it
     if (hasPriority && editingHandbook) {
       try {
-        await fetch(`/api/president/handbook/${editingHandbook._id}/clear-priority`, {
+        const clearResponse = await fetch(`/api/president/handbook/${editingHandbook._id}/clear-priority`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user._id })
         });
+        logApiResponse(clearResponse);
       } catch (error) {
         console.error('Error clearing priority:', error);
       }
@@ -256,12 +261,24 @@ const PresidentHandbook = () => {
           <>
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Handbook Pages</h1>
-            <button
-              onClick={() => setShowModal(true)}
-              className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
-            >
-              Create Handbook
-            </button>
+            <div className='flex items-center space-x-4'>
+              <button 
+                onClick={() => { setLoading(true); fetchHandbooks(); }} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+                title="Refresh page data"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh</span>
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+              >
+                Create Handbook
+              </button>
+            </div>
           </div>
 
           {/* Handbook List */}

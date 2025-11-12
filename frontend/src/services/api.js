@@ -20,6 +20,17 @@ const apiRequest = async (endpoint, options = {}) => {
   try {
     const response = await fetch(url, config);
     
+    // Check for API log header and log to browser console (for both success and error responses)
+    const apiLogHeader = response.headers.get('X-API-Log');
+    if (apiLogHeader) {
+      try {
+        const logData = JSON.parse(apiLogHeader);
+        console.log('[API Log]', JSON.stringify(logData, null, 2));
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
+    
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Request failed' }));
       throw new Error(errorData.message || `Request failed with status ${response.status}`);

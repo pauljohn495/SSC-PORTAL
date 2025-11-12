@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { logApiResponse } from '../utils/fetchWithLogging';
 
 const PresidentMemorandum = () => {
   const { logout, user } = useAuth();
@@ -68,6 +69,14 @@ const PresidentMemorandum = () => {
       return;
     }
 
+    // Check file size (limit to 10MB to prevent issues)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > maxSize) {
+      setMessage('File size is too large. Please upload a file smaller than 10MB.');
+      setMessageType('error');
+      return;
+    }
+
     try {
       setUploading(true);
       
@@ -76,37 +85,67 @@ const PresidentMemorandum = () => {
       reader.readAsDataURL(file);
       
       reader.onload = async () => {
-        const base64File = reader.result;
-        
-        const response = await fetch('/api/president/memorandums', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title,
-            year: parseInt(year),
-            fileUrl: base64File,
-            userId: user._id
-          })
-        });
-
-        const data = await response.json();
-        
-        if (response.ok) {
-          setMessage('Memorandum uploaded successfully! Waiting for admin approval.');
-          setMessageType('success');
-          setTitle('');
-          setYear('');
-          setFile(null);
-          // Reset file input
-          if (fileInputRef.current) {
-            fileInputRef.current.value = '';
+        try {
+          const base64File = reader.result;
+          
+          if (!base64File) {
+            throw new Error('Failed to read file');
           }
-          setUploading(false);
-          setShowModal(false);
-          fetchMemorandums(); // Refresh the list
-        } else {
-          setMessage(data.message || 'Upload failed. Please try again.');
+          
+          const response = await fetch('/api/president/memorandums', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title,
+              year: parseInt(year),
+              fileUrl: base64File,
+              fileName: file.name || '',
+              userId: user._id
+            })
+          });
+
+          logApiResponse(response);
+          
+          // Safely parse JSON response
+          let data = {};
+          try {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const text = await response.text();
+              if (text && text.trim()) {
+                data = JSON.parse(text);
+              }
+            }
+          } catch (parseError) {
+            console.error('Failed to parse JSON response:', parseError);
+            // If we can't parse JSON, check if response was ok
+            if (!response.ok) {
+              throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            }
+            throw new Error('Invalid response from server');
+          }
+          
+          if (response.ok) {
+            setMessage('Memorandum uploaded successfully! Waiting for admin approval.');
+            setMessageType('success');
+            setTitle('');
+            setYear('');
+            setFile(null);
+            // Reset file input
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            setShowModal(false);
+            fetchMemorandums(); // Refresh the list
+          } else {
+            setMessage(data.message || `Upload failed (${response.status}). Please try again.`);
+            setMessageType('error');
+          }
+        } catch (error) {
+          console.error('Error in file upload:', error);
+          setMessage(error.message || 'Error uploading memorandum. Please try again.');
           setMessageType('error');
+        } finally {
           setUploading(false);
         }
       };
@@ -133,6 +172,7 @@ const PresidentMemorandum = () => {
         body: JSON.stringify({ userId: user._id })
       });
 
+      logApiResponse(priorityResponse);
       const priorityData = await priorityResponse.json();
 
       if (priorityData.hasPriority) {
@@ -212,11 +252,13 @@ const PresidentMemorandum = () => {
           title: editTitle,
           year: parseInt(editYear),
           fileUrl: fileUrl,
+          fileName: editFile ? editFile.name || '' : editingMemorandum.fileName || '',
           userId: user._id,
           version: editVersion
         })
       });
 
+      logApiResponse(response);
       const data = await response.json();
       
       if (response.ok) {
@@ -245,11 +287,12 @@ const PresidentMemorandum = () => {
     // Clear priority if we have it
     if (hasPriority && editingMemorandum) {
       try {
-        await fetch(`/api/president/memorandums/${editingMemorandum._id}/clear-priority`, {
+        const clearResponse = await fetch(`/api/president/memorandums/${editingMemorandum._id}/clear-priority`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user._id })
         });
+        logApiResponse(clearResponse);
       } catch (error) {
         console.error('Error clearing priority:', error);
       }
@@ -338,12 +381,24 @@ const PresidentMemorandum = () => {
           ) : (
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Memorandum</h1>
-            <button
-              onClick={() => setShowModal(true)}
-              className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
-            >
-              Create Memorandum
-            </button>
+            <div className='flex items-center space-x-4'>
+              <button 
+                onClick={() => { setLoading(true); fetchMemorandums(); }} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+                title="Refresh page data"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh</span>
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+              >
+                Create Memorandum
+              </button>
+            </div>
           </div>
           )}
 

@@ -70,7 +70,11 @@ const dbFallbackSearch = async ({ query, role, type, year, limit = 50 }) => {
   if (normalizedType === 'all' || normalizedType === 'memorandum') {
     const memoFilter = {
       status: 'approved',
-      title: regexQuery
+      $or: [
+        { title: regexQuery },
+        { fileName: regexQuery },
+        { pdfContent: regexQuery }
+      ]
     };
     if (year) {
       memoFilter.year = Number(year);

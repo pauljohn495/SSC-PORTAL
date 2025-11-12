@@ -167,12 +167,24 @@ const PresidentNotifications = () => {
           <>
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Notifications</h1>
-            <button
-              onClick={() => setShowModal(true)}
-              className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
-            >
-              Create Notification
-            </button>
+            <div className='flex items-center space-x-4'>
+              <button 
+                onClick={() => { setLoading(true); fetchNotifications(); }} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+                title="Refresh page data"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh</span>
+              </button>
+              <button
+                onClick={() => setShowModal(true)}
+                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+              >
+                Create Notification
+              </button>
+            </div>
           </div>
 
           {messageAlert && (

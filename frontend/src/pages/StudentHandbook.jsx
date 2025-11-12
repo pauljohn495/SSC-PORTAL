@@ -13,13 +13,27 @@ const StudentHandbook = () => {
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
   const [pendingPage, setPendingPage] = useState(null)
   const downloadMenuRef = useRef(null)
-  const { logout, user } = useAuth()
+  const { logout, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    fetchHandbook()
-  }, [])
+    if (!authLoading && !user) {
+      navigate('/login')
+    }
+  }, [user, authLoading, navigate])
+
+  useEffect(() => {
+    if (user) {
+      fetchHandbook()
+    }
+  }, [user])
+
+  // Show loading or nothing while checking auth
+  if (authLoading || !user) {
+    return null
+  }
 
   const fetchHandbook = async () => {
     try {
@@ -139,9 +153,19 @@ const StudentHandbook = () => {
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const margin = 20
+    const footerHeight = 15
     const maxWidth = pageWidth - 2 * margin
     const lineHeight = 7
     let yPosition = margin
+    let pageNumber = 1
+
+    // Helper function to add footer
+    const addFooter = (pageNum) => {
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      const footerY = pageHeight - footerHeight
+      doc.text(`Page ${pageNum}`, pageWidth / 2, footerY, { align: 'center' })
+    }
 
     // Add header
     doc.setFontSize(18)
@@ -153,10 +177,6 @@ const StudentHandbook = () => {
     yPosition += 10
     doc.setFontSize(16)
     doc.text('STUDENT HANDBOOK', pageWidth / 2, yPosition, { align: 'center' })
-    yPosition += 10
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Page ${currentPage.pageNumber || currentPageIndex + 1}`, pageWidth / 2, yPosition, { align: 'center' })
     yPosition += 15
 
     // Split content into lines that fit the page width
@@ -168,13 +188,19 @@ const StudentHandbook = () => {
     doc.setFont('helvetica', 'normal')
     
     lines.forEach((line) => {
-      if (yPosition + lineHeight > pageHeight - margin) {
+      if (yPosition + lineHeight > pageHeight - margin - footerHeight) {
+        // Add footer to current page before adding new page
+        addFooter(pageNumber)
         doc.addPage()
+        pageNumber++
         yPosition = margin
       }
       doc.text(line, margin, yPosition)
       yPosition += lineHeight
     })
+
+    // Add footer to the last page
+    addFooter(pageNumber)
 
     doc.save(`Student-Handbook-Page-${currentPage.pageNumber || currentPageIndex + 1}.pdf`)
     setDownloadMenuOpen(false)
@@ -187,11 +213,23 @@ const StudentHandbook = () => {
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
     const margin = 20
+    const footerHeight = 15
     const maxWidth = pageWidth - 2 * margin
     const lineHeight = 7
+    let totalPageNumber = 1
+
+    // Helper function to add footer
+    const addFooter = (pageNum) => {
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      const footerY = pageHeight - footerHeight
+      doc.text(`Page ${pageNum}`, pageWidth / 2, footerY, { align: 'center' })
+    }
 
     sortedPages.forEach((page, index) => {
       if (index > 0) {
+        // Add footer to previous page before adding new page
+        addFooter(totalPageNumber - 1)
         doc.addPage()
       }
 
@@ -207,10 +245,6 @@ const StudentHandbook = () => {
       yPosition += 10
       doc.setFontSize(16)
       doc.text('STUDENT HANDBOOK', pageWidth / 2, yPosition, { align: 'center' })
-      yPosition += 10
-      doc.setFontSize(12)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Page ${page.pageNumber || index + 1}`, pageWidth / 2, yPosition, { align: 'center' })
       yPosition += 15
 
       // Split content into lines
@@ -220,14 +254,20 @@ const StudentHandbook = () => {
       // Add content
       doc.setFontSize(11)
       lines.forEach((line) => {
-        if (yPosition + lineHeight > pageHeight - margin) {
+        if (yPosition + lineHeight > pageHeight - margin - footerHeight) {
+          // Add footer to current page before adding new page
+          addFooter(totalPageNumber)
           doc.addPage()
+          totalPageNumber++
           yPosition = margin
         }
         doc.text(line, margin, yPosition)
         yPosition += lineHeight
       })
     })
+
+    // Add footer to the last page
+    addFooter(totalPageNumber)
 
     doc.save('Student-Handbook-All-Pages.pdf')
     setDownloadMenuOpen(false)

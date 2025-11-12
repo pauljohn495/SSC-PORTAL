@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
@@ -9,26 +9,25 @@ const Home = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [homeSearch, setHomeSearch] = useState('')
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout, loading: authLoading } = useAuth()
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login')
+    }
+  }, [user, authLoading, navigate])
 
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
   }
 
   const MemorandumClick = () => {
-    if (user) {
-      navigate('/memorandum')
-    } else {
-      navigate('/login')
-    }
+    navigate('/memorandum')
   }
 
   const HandbookClick = () => {
-    if (user) {
-      navigate('/student-handbook')
-    } else {
-      navigate('/login')
-    }
+    navigate('/student-handbook')
   }
 
   const AdminDashboardClick = () => {
@@ -64,6 +63,10 @@ const Home = () => {
     navigate(`/search?${params.toString()}`)
   }
 
+  // Show loading or nothing while checking auth
+  if (authLoading || !user) {
+    return null
+  }
 
   return (
     <div className='s text-black w-full min-h-screen flex flex-col'>

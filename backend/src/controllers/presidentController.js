@@ -8,27 +8,102 @@ import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
+import { extractTextFromPDF } from '../utils/pdfExtractor.js';
+
+// Helper function to create simplified log and set response header
+const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
+  // Extract content from various response structures
+  let content = null;
+  if (responseData?.content) {
+    content = responseData.content;
+  } else if (responseData?.handbook) {
+    content = responseData.handbook;
+  } else if (responseData?.memorandum) {
+    // Exclude fileUrl from memorandum to avoid large headers
+    const { fileUrl, ...memorandumWithoutFile } = responseData.memorandum;
+    content = memorandumWithoutFile;
+  } else if (responseData?.notification) {
+    content = responseData.notification;
+  } else if (responseData?.logs) {
+    content = responseData.logs;
+  } else if (responseData?.notifications) {
+    content = responseData.notifications;
+  } else if (responseData?.events) {
+    content = responseData.events;
+  } else if (Array.isArray(responseData)) {
+    content = responseData;
+  }
+  
+  // Create simplified log data (without full response object)
+  const logData = {
+    method,
+    endpoint,
+    status,
+    message: responseData?.message || null,
+    content
+  };
+  
+  // Set custom header for browser console logging only (no server console log)
+  // Limit header size to prevent issues (max ~8KB for headers)
+  try {
+    const headerValue = JSON.stringify(logData);
+    if (headerValue.length > 8000) {
+      // If too large, simplify further
+      logData.content = Array.isArray(content) ? `[Array of ${content.length} items]` : '[Content too large]';
+      res.setHeader('X-API-Log', JSON.stringify(logData));
+    } else {
+      res.setHeader('X-API-Log', headerValue);
+    }
+  } catch (error) {
+    // If header setting fails, just skip it (don't break the response)
+    console.error('Failed to set X-API-Log header:', error);
+  }
+  
+  return logData;
+};
 
 // Upload memorandum
 export const uploadMemorandum = async (req, res, next) => {
   try {
-    const { title, year, fileUrl, userId } = req.body;
+    const { title, year, fileUrl, fileName, userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/memorandums', 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'POST', '/api/president/memorandums', 404, response);
+      return res.status(404).json(response);
     }
     
     if (user.role !== 'president') {
       console.error(`User ${userId} (${user.email}) attempted to upload memorandum but has role: ${user.role}`);
-      return res.status(403).json({ message: 'Only presidents can upload memorandum drafts' });
+      const response = { message: 'Only presidents can upload memorandum drafts' };
+      logAndSetHeader(req, res, 'POST', '/api/president/memorandums', 403, response);
+      return res.status(403).json(response);
     }
 
-    const memorandum = new Memorandum({ title, year, fileUrl, createdBy: userId });
+    // Extract text from PDF
+    let pdfContent = '';
+    try {
+      pdfContent = await extractTextFromPDF(fileUrl);
+    } catch (error) {
+      console.error('Failed to extract PDF text:', error);
+      // Continue even if extraction fails
+    }
+
+    const memorandum = new Memorandum({ 
+      title, 
+      year, 
+      fileUrl, 
+      fileName: fileName || '', 
+      pdfContent,
+      createdBy: userId 
+    });
     await memorandum.save();
 
     await logActivity(userId, 'memorandum_upload', `Memorandum "${title}" uploaded`, { 
@@ -37,7 +112,22 @@ export const uploadMemorandum = async (req, res, next) => {
       year 
     }, req);
 
-    res.status(201).json({ message: 'Memorandum draft uploaded', memorandum });
+    // Create response without fileUrl to avoid large payloads
+    const memorandumResponse = {
+      _id: memorandum._id,
+      title: memorandum.title,
+      year: memorandum.year,
+      status: memorandum.status,
+      createdBy: memorandum.createdBy,
+      createdAt: memorandum.createdAt,
+      updatedAt: memorandum.updatedAt,
+      version: memorandum.version
+      // Exclude fileUrl as it's too large for response
+    };
+
+    const response = { message: 'Memorandum draft uploaded', memorandum: memorandumResponse };
+    logAndSetHeader(req, res, 'POST', '/api/president/memorandums', 201, response);
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }
@@ -51,12 +141,16 @@ export const setMemorandumPriority = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can set edit priority' });
+      const response = { message: 'Only presidents can set edit priority' };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/priority`, 403, response);
+      return res.status(403).json(response);
     }
 
     const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
-      return res.status(404).json({ message: 'Memorandum not found' });
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/priority`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (!memorandum.priorityEditor) {
@@ -64,20 +158,24 @@ export const setMemorandumPriority = async (req, res, next) => {
       memorandum.priorityEditStartedAt = new Date();
       await memorandum.save();
       
-      res.status(200).json({ 
+      const response = { 
         message: 'You have edit priority', 
         memorandum,
         hasPriority: true
-      });
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/priority`, 200, response);
+      res.status(200).json(response);
     } else {
       const priorityUser = await User.findById(memorandum.priorityEditor);
-      res.status(200).json({ 
+      const response = { 
         message: 'Another user has edit priority', 
         memorandum,
         hasPriority: false,
         priorityEditor: priorityUser ? priorityUser.name : 'Unknown',
         priorityEditStartedAt: memorandum.priorityEditStartedAt
-      });
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/priority`, 200, response);
+      res.status(200).json(response);
     }
   } catch (error) {
     next(error);
@@ -88,32 +186,55 @@ export const setMemorandumPriority = async (req, res, next) => {
 export const updateMemorandum = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, year, fileUrl, userId, version } = req.body;
+    const { title, year, fileUrl, fileName, userId, version } = req.body;
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can update memorandum drafts' });
+      const response = { message: 'Only presidents can update memorandum drafts' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 403, response);
+      return res.status(403).json(response);
     }
 
     const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
-      return res.status(404).json({ message: 'Memorandum not found' });
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (!memorandum.priorityEditor || memorandum.priorityEditor.toString() !== userId) {
-      return res.status(409).json({ 
+      const response = { 
         message: 'You do not have edit priority. Only the first user to click edit can save changes.',
         hasPriority: false
-      });
+      };
+      logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 409, response);
+      return res.status(409).json(response);
     }
 
     if (memorandum.version !== version) {
-      return res.status(409).json({ message: 'Document has been modified. Please refresh and try again.' });
+      const response = { message: 'Document has been modified. Please refresh and try again.' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 409, response);
+      return res.status(409).json(response);
     }
 
+    const oldFileUrl = memorandum.fileUrl;
     memorandum.title = title;
     memorandum.year = year;
     memorandum.fileUrl = fileUrl;
+    if (fileName !== undefined) {
+      memorandum.fileName = fileName || '';
+    }
+    
+    // Extract text from PDF if a new file was uploaded
+    if (fileUrl && fileUrl !== oldFileUrl) {
+      try {
+        memorandum.pdfContent = await extractTextFromPDF(fileUrl);
+      } catch (error) {
+        console.error('Failed to extract PDF text:', error);
+        // Keep existing content if extraction fails
+      }
+    }
+    
     memorandum.status = 'draft';
     memorandum.version = memorandum.version + 1;
     memorandum.editedBy = userId;
@@ -128,7 +249,24 @@ export const updateMemorandum = async (req, res, next) => {
       year: memorandum.year 
     }, req);
 
-    res.status(200).json({ message: 'Memorandum updated successfully', memorandum });
+    // Create response without fileUrl to avoid large payloads
+    const memorandumResponse = {
+      _id: memorandum._id,
+      title: memorandum.title,
+      year: memorandum.year,
+      status: memorandum.status,
+      createdBy: memorandum.createdBy,
+      editedBy: memorandum.editedBy,
+      editedAt: memorandum.editedAt,
+      createdAt: memorandum.createdAt,
+      updatedAt: memorandum.updatedAt,
+      version: memorandum.version
+      // Exclude fileUrl as it's too large for response
+    };
+
+    const response = { message: 'Memorandum updated successfully', memorandum: memorandumResponse };
+    logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -142,12 +280,16 @@ export const clearMemorandumPriority = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can clear edit priority' });
+      const response = { message: 'Only presidents can clear edit priority' };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/clear-priority`, 403, response);
+      return res.status(403).json(response);
     }
 
     const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
-      return res.status(404).json({ message: 'Memorandum not found' });
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/clear-priority`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (memorandum.priorityEditor && memorandum.priorityEditor.toString() === userId) {
@@ -156,7 +298,9 @@ export const clearMemorandumPriority = async (req, res, next) => {
       await memorandum.save();
     }
 
-    res.status(200).json({ message: 'Priority cleared' });
+    const response = { message: 'Priority cleared' };
+    logAndSetHeader(req, res, 'POST', `/api/president/memorandums/${id}/clear-priority`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -168,21 +312,29 @@ export const createHandbook = async (req, res, next) => {
     const { content, userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 400, response);
+      return res.status(400).json(response);
     }
 
     if (!content) {
-      return res.status(400).json({ message: 'Content is required' });
+      const response = { message: 'Content is required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 404, response);
+      return res.status(404).json(response);
     }
     
     if (user.role !== 'president') {
       console.error(`User ${userId} (${user.email}) attempted to create handbook but has role: ${user.role}`);
-      return res.status(403).json({ message: 'Only presidents can create handbook drafts' });
+      const response = { message: 'Only presidents can create handbook drafts' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 403, response);
+      return res.status(403).json(response);
     }
 
     // Get the next page number (count existing approved/draft handbooks + 1)
@@ -197,7 +349,9 @@ export const createHandbook = async (req, res, next) => {
       pageNumber 
     }, req);
 
-    res.status(201).json({ message: 'Handbook draft created', handbook });
+    const response = { message: 'Handbook draft created', handbook };
+    logAndSetHeader(req, res, 'POST', '/api/president/handbook', 201, response);
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }
@@ -211,12 +365,16 @@ export const setHandbookPriority = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can set edit priority' });
+      const response = { message: 'Only presidents can set edit priority' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/priority`, 403, response);
+      return res.status(403).json(response);
     }
 
     const handbook = await Handbook.findById(id);
     if (!handbook) {
-      return res.status(404).json({ message: 'Handbook not found' });
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/priority`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (!handbook.priorityEditor) {
@@ -224,20 +382,24 @@ export const setHandbookPriority = async (req, res, next) => {
       handbook.priorityEditStartedAt = new Date();
       await handbook.save();
       
-      res.status(200).json({ 
+      const response = { 
         message: 'You have edit priority', 
         handbook,
         hasPriority: true
-      });
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/priority`, 200, response);
+      res.status(200).json(response);
     } else {
       const priorityUser = await User.findById(handbook.priorityEditor);
-      res.status(200).json({ 
+      const response = { 
         message: 'Another user has edit priority', 
         handbook,
         hasPriority: false,
         priorityEditor: priorityUser ? priorityUser.name : 'Unknown',
         priorityEditStartedAt: handbook.priorityEditStartedAt
-      });
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/priority`, 200, response);
+      res.status(200).json(response);
     }
   } catch (error) {
     next(error);
@@ -251,28 +413,38 @@ export const updateHandbook = async (req, res, next) => {
     const { content, userId, version } = req.body;
 
     if (!content) {
-      return res.status(400).json({ message: 'Content is required' });
+      const response = { message: 'Content is required' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can update handbook drafts' });
+      const response = { message: 'Only presidents can update handbook drafts' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 403, response);
+      return res.status(403).json(response);
     }
 
     const handbook = await Handbook.findById(id);
     if (!handbook) {
-      return res.status(404).json({ message: 'Handbook not found' });
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (!handbook.priorityEditor || handbook.priorityEditor.toString() !== userId) {
-      return res.status(409).json({ 
+      const response = { 
         message: 'You do not have edit priority. Only the first user to click edit can save changes.',
         hasPriority: false
-      });
+      };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 409, response);
+      return res.status(409).json(response);
     }
 
     if (handbook.version !== version) {
-      return res.status(409).json({ message: 'Document has been modified. Please refresh and try again.' });
+      const response = { message: 'Document has been modified. Please refresh and try again.' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 409, response);
+      return res.status(409).json(response);
     }
 
     handbook.content = content;
@@ -290,7 +462,9 @@ export const updateHandbook = async (req, res, next) => {
       pageNumber: handbook.pageNumber 
     }, req);
 
-    res.status(200).json({ message: 'Handbook updated successfully', handbook });
+    const response = { message: 'Handbook updated successfully', handbook };
+    logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -304,12 +478,16 @@ export const clearHandbookPriority = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can clear edit priority' });
+      const response = { message: 'Only presidents can clear edit priority' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/clear-priority`, 403, response);
+      return res.status(403).json(response);
     }
 
     const handbook = await Handbook.findById(id);
     if (!handbook) {
-      return res.status(404).json({ message: 'Handbook not found' });
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/clear-priority`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (handbook.priorityEditor && handbook.priorityEditor.toString() === userId) {
@@ -318,7 +496,9 @@ export const clearHandbookPriority = async (req, res, next) => {
       await handbook.save();
     }
 
-    res.status(200).json({ message: 'Priority cleared' });
+    const response = { message: 'Priority cleared' };
+    logAndSetHeader(req, res, 'POST', `/api/president/handbook/${id}/clear-priority`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -330,14 +510,18 @@ export const getUserActivityLogs = async (req, res, next) => {
     const { userId } = req.query;
     
     if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'GET', '/api/president/activity-logs', 400, response);
+      return res.status(400).json(response);
     }
 
     const logs = await ActivityLog.find({ user: userId })
       .populate('user', 'name email role')
       .sort({ timestamp: -1 })
       .limit(500);
-    res.json(logs);
+    const response = logs;
+    logAndSetHeader(req, res, 'GET', '/api/president/activity-logs', 200, { logs: response, count: response.length });
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -349,21 +533,29 @@ export const createNotification = async (req, res, next) => {
     const { title, message, userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'User ID is required' });
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 404, response);
+      return res.status(404).json(response);
     }
     
     if (user.role !== 'president') {
       console.error(`User ${userId} (${user.email}) attempted to create notification but has role: ${user.role}`);
-      return res.status(403).json({ message: 'Only presidents can create notifications' });
+      const response = { message: 'Only presidents can create notifications' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 403, response);
+      return res.status(403).json(response);
     }
 
     if (!title || !message) {
-      return res.status(400).json({ message: 'Title and message are required' });
+      const response = { message: 'Title and message are required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 400, response);
+      return res.status(400).json(response);
     }
 
     const notification = new Notification({ title, message, createdBy: userId });
@@ -374,7 +566,9 @@ export const createNotification = async (req, res, next) => {
       title 
     }, req);
 
-    res.status(201).json({ message: 'Notification created successfully', notification });
+    const response = { message: 'Notification created successfully', notification };
+    logAndSetHeader(req, res, 'POST', '/api/president/notifications', 201, response);
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }
@@ -388,16 +582,22 @@ export const publishNotification = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can publish notifications' });
+      const response = { message: 'Only presidents can publish notifications' };
+      logAndSetHeader(req, res, 'POST', `/api/president/notifications/${id}/publish`, 403, response);
+      return res.status(403).json(response);
     }
 
     const notification = await Notification.findById(id);
     if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
+      const response = { message: 'Notification not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/notifications/${id}/publish`, 404, response);
+      return res.status(404).json(response);
     }
 
     if (notification.published) {
-      return res.status(400).json({ message: 'Notification is already published' });
+      const response = { message: 'Notification is already published' };
+      logAndSetHeader(req, res, 'POST', `/api/president/notifications/${id}/publish`, 400, response);
+      return res.status(400).json(response);
     }
 
     // Mark as published
@@ -462,7 +662,9 @@ export const publishNotification = async (req, res, next) => {
       title: notification.title 
     }, req);
 
-    res.status(200).json({ message: 'Notification published and emails sent', notification });
+    const response = { message: 'Notification published and emails sent', notification };
+    logAndSetHeader(req, res, 'POST', `/api/president/notifications/${id}/publish`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -475,7 +677,9 @@ export const getNotifications = async (req, res, next) => {
       .populate('createdBy', 'name email')
       .sort({ published: -1, publishedAt: -1, createdAt: -1 });
     
-    res.json(notifications);
+    const response = notifications;
+    logAndSetHeader(req, res, 'GET', '/api/president/notifications', 200, { notifications: response, count: response.length });
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -489,12 +693,16 @@ export const deleteNotification = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user || user.role !== 'president') {
-      return res.status(403).json({ message: 'Only presidents can delete notifications' });
+      const response = { message: 'Only presidents can delete notifications' };
+      logAndSetHeader(req, res, 'DELETE', `/api/president/notifications/${id}`, 403, response);
+      return res.status(403).json(response);
     }
 
     const notification = await Notification.findById(id);
     if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
+      const response = { message: 'Notification not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/president/notifications/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     await Notification.findByIdAndDelete(id);
@@ -504,7 +712,9 @@ export const deleteNotification = async (req, res, next) => {
       title: notification.title 
     }, req);
 
-    res.json({ message: 'Notification deleted successfully' });
+    const response = { message: 'Notification deleted successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/president/notifications/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }

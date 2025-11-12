@@ -2,6 +2,35 @@ import { google } from 'googleapis'
 import User from '../models/User.js'
 import { config } from '../config/index.js'
 
+// Helper function to create simplified log and set response header
+const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
+  // Extract content from various response structures
+  let content = null;
+  if (responseData?.content) {
+    content = responseData.content;
+  } else if (responseData?.events) {
+    content = responseData.events;
+  } else if (responseData?.url) {
+    content = responseData.url;
+  } else if (Array.isArray(responseData)) {
+    content = responseData;
+  }
+  
+  // Create simplified log data (without full response object)
+  const logData = {
+    method,
+    endpoint,
+    status,
+    message: responseData?.message || null,
+    content
+  };
+  
+  // Set custom header for browser console logging only (no server console log)
+  res.setHeader('X-API-Log', JSON.stringify(logData));
+  
+  return logData;
+};
+
 const getOAuth2Client = (tokens) => {
   const oAuth2Client = new google.auth.OAuth2(
     config.google.clientId,
@@ -37,9 +66,14 @@ export const getAuthUrl = async (req, res) => {
       prompt: 'consent',
       state
     })
-    res.json({ url: authUrl })
+    const response = { url: authUrl }
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/auth-url', 200, response)
+    res.json(response)
   } catch (e) {
-    res.status(400).json({ message: e.message })
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: e.message }
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/auth-url', status, response)
+    res.status(status).json(response)
   }
 }
 
@@ -61,9 +95,14 @@ export const oauthCallback = async (req, res) => {
     }
     await user.save()
 
-    res.send('Google Calendar connected. You can close this window.')
+    const response = { message: 'Google Calendar connected. You can close this window.' }
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/oauth/callback', 200, response)
+    res.send(response.message)
   } catch (e) {
-    res.status(400).send(`OAuth error: ${e.message}`)
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: `OAuth error: ${e.message}` }
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/oauth/callback', status, response)
+    res.status(status).send(response.message)
   }
 }
 
@@ -84,41 +123,64 @@ export const listEvents = async (req, res) => {
     const { userId, maxResults = 20 } = req.query
     const user = await ensurePresident(userId)
     if (!user.googleCalendar?.refreshToken && !user.googleCalendar?.accessToken) {
-      return res.status(409).json({ message: 'Calendar not connected' })
+      const response = { message: 'Calendar not connected' }
+      logAndSetHeader(req, res, 'GET', '/api/president/calendar/events', 409, response)
+      return res.status(409).json(response)
     }
     const calendar = getCalendarClient(user)
     const calendarId = config.google.calendarId || 'primary'
     const now = new Date().toISOString()
-    const response = await calendar.events.list({
+    const calendarResponse = await calendar.events.list({
       calendarId,
       timeMin: now,
       maxResults: Number(maxResults),
       singleEvents: true,
       orderBy: 'startTime'
     })
-    res.json(response.data.items || [])
+    const events = calendarResponse.data.items || []
+    const response = events
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/events', 200, { events: response, count: response.length })
+    res.json(response)
   } catch (e) {
-    res.status(400).json({ message: e.message })
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: e.message }
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/events', status, response)
+    res.status(status).json(response)
   }
 }
 
 export const createEvent = async (req, res) => {
   try {
-    const { userId, summary, description, startISO, endISO, location } = req.body
+    const { userId, summary, description, startISO, endISO, location, timeZone } = req.body
     const user = await ensurePresident(userId)
     const calendar = getCalendarClient(user)
     const calendarId = config.google.calendarId || 'primary'
+    
+    // Use provided timezone or default to UTC
+    const eventTimeZone = timeZone || 'UTC'
+    
     const event = {
       summary,
       description,
       location,
-      start: { dateTime: startISO },
-      end: { dateTime: endISO }
+      start: { 
+        dateTime: startISO,
+        timeZone: eventTimeZone
+      },
+      end: { 
+        dateTime: endISO,
+        timeZone: eventTimeZone
+      }
     }
-    const response = await calendar.events.insert({ calendarId, requestBody: event })
-    res.json(response.data)
+    const calendarResponse = await calendar.events.insert({ calendarId, requestBody: event })
+    const response = calendarResponse.data
+    logAndSetHeader(req, res, 'POST', '/api/president/calendar/events', 200, response)
+    res.json(response)
   } catch (e) {
-    res.status(400).json({ message: e.message })
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: e.message }
+    logAndSetHeader(req, res, 'POST', '/api/president/calendar/events', status, response)
+    res.status(status).json(response)
   }
 }
 
@@ -136,10 +198,15 @@ export const updateEvent = async (req, res) => {
       start: startISO ? { dateTime: startISO } : undefined,
       end: endISO ? { dateTime: endISO } : undefined
     }
-    const response = await calendar.events.patch({ calendarId, eventId, requestBody: event })
-    res.json(response.data)
+    const calendarResponse = await calendar.events.patch({ calendarId, eventId, requestBody: event })
+    const response = calendarResponse.data
+    logAndSetHeader(req, res, 'PUT', `/api/president/calendar/events/${eventId}`, 200, response)
+    res.json(response)
   } catch (e) {
-    res.status(400).json({ message: e.message })
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: e.message }
+    logAndSetHeader(req, res, 'PUT', `/api/president/calendar/events/${eventId}`, status, response)
+    res.status(status).json(response)
   }
 }
 
@@ -151,9 +218,14 @@ export const deleteEvent = async (req, res) => {
     const calendar = getCalendarClient(user)
     const calendarId = config.google.calendarId || 'primary'
     await calendar.events.delete({ calendarId, eventId })
-    res.json({ success: true })
+    const response = { success: true }
+    logAndSetHeader(req, res, 'DELETE', `/api/president/calendar/events/${eventId}`, 200, response)
+    res.json(response)
   } catch (e) {
-    res.status(400).json({ message: e.message })
+    const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
+    const response = { message: e.message }
+    logAndSetHeader(req, res, 'DELETE', `/api/president/calendar/events/${eventId}`, status, response)
+    res.status(status).json(response)
   }
 }
 
