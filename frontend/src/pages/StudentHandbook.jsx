@@ -14,6 +14,7 @@ const StudentHandbook = () => {
   const [pdfError, setPdfError] = useState(null)
   const [pdfLoaded, setPdfLoaded] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [pageNumberQuery, setPageNumberQuery] = useState('')
   const downloadMenuRef = useRef(null)
   const pdfIframeRef = useRef(null)
   const { logout, user, loading: authLoading } = useAuth()
@@ -175,12 +176,12 @@ const StudentHandbook = () => {
     if (!searchQuery.trim() || sortedPages.length === 0) return
 
     const query = searchQuery.toLowerCase().trim()
-    
+
     // Search through pdfContent of all pages
     for (let i = 0; i < sortedPages.length; i++) {
       const page = sortedPages[i]
       const content = (page.pdfContent || page.content || '').toLowerCase()
-      
+
       if (content.includes(query)) {
         // Found the term in this page, navigate to it
         goToPage(i)
@@ -188,9 +189,32 @@ const StudentHandbook = () => {
         return
       }
     }
-    
+
     // If not found, show a message (you could use a toast here)
     alert(`No results found for "${searchQuery}"`)
+  }
+
+  const handleGoToPage = () => {
+    if (!pageNumberQuery.trim() || sortedPages.length === 0) return
+
+    const pageNum = parseInt(pageNumberQuery.trim(), 10)
+    if (isNaN(pageNum) || pageNum < 1 || pageNum > totalPages) {
+      alert(`Please enter a valid page number between 1 and ${totalPages}`)
+      return
+    }
+
+    // Find the page with this pageNumber
+    const targetIndex = sortedPages.findIndex((page, index) => {
+      const pageNumber = page.pageNumber || index + 1
+      return Number(pageNumber) === pageNum
+    })
+
+    if (targetIndex >= 0) {
+      goToPage(targetIndex)
+      setPageNumberQuery('')
+    } else {
+      alert(`Page ${pageNum} not found`)
+    }
   }
 
   const downloadCurrentPageAsPDF = async () => {
@@ -739,6 +763,30 @@ const StudentHandbook = () => {
                         </>
                       )
                     })()}
+                  </div>
+
+                  {/* Page Number Search Bar */}
+                  <div className='mt-6'>
+                    <div className='relative max-w-xs mx-auto'>
+                      <input
+                        type='text'
+                        value={pageNumberQuery}
+                        onChange={(e) => setPageNumberQuery(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleGoToPage()
+                          }
+                        }}
+                        placeholder='Go to page...'
+                        className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black text-center'
+                      />
+                      <button
+                        onClick={handleGoToPage}
+                        className='absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 transition-colors text-sm'
+                      >
+                        Go
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
