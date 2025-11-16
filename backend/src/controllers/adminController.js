@@ -564,48 +564,120 @@ export const updateHandbookStatus = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    // If approving, reject any existing approved handbook (only one approved at a time)
+    // If approving, reject any existing approved handbooks (all pages from previous handbook)
     if (status === 'approved') {
-      const existingApproved = await Handbook.findOne({ 
-        status: 'approved', 
-        _id: { $ne: id } 
+      // Find all existing approved pages and reject them
+      const existingApproved = await Handbook.find({ 
+        status: 'approved',
+        _id: { $ne: id }
       });
-      if (existingApproved) {
-        existingApproved.status = 'rejected';
-        await existingApproved.save();
-        await logActivity('system_admin', 'handbook_reject', `Previous handbook rejected: ${existingApproved.fileName || existingApproved._id}`, { 
-          handbookId: existingApproved._id,
-          fileName: existingApproved.fileName
+      
+      if (existingApproved.length > 0) {
+        // Reject all existing approved pages
+        await Handbook.updateMany(
+          { status: 'approved', _id: { $ne: id } },
+          { status: 'rejected' }
+        );
+        
+        // Log rejection for each page
+        for (const oldHandbook of existingApproved) {
+          await logActivity('system_admin', 'handbook_reject', `Previous handbook page rejected: ${oldHandbook.fileName || oldHandbook._id}`, { 
+            handbookId: oldHandbook._id,
+            fileName: oldHandbook.fileName
+          }, req);
+        }
+      }
+      
+      // Find all pages from the same handbook upload (same createdBy and created within 1 minute)
+      // This ensures we approve all pages from the same PDF upload
+      // Include pages with any status (draft, rejected) but not already approved
+      const sameHandbookPages = await Handbook.find({
+        createdBy: handbook.createdBy,
+        createdAt: {
+          $gte: new Date(handbook.createdAt.getTime() - 60000), // 1 minute before
+          $lte: new Date(handbook.createdAt.getTime() + 60000)  // 1 minute after
+        },
+        status: { $ne: 'approved' } // Include draft and rejected pages
+      });
+      
+      // Approve all pages from the same handbook (including the one being clicked)
+      if (sameHandbookPages.length > 0) {
+        await Handbook.updateMany(
+          {
+            createdBy: handbook.createdBy,
+            createdAt: {
+              $gte: new Date(handbook.createdAt.getTime() - 60000),
+              $lte: new Date(handbook.createdAt.getTime() + 60000)
+            },
+            status: { $ne: 'approved' }
+          },
+          { status: 'approved' }
+        );
+        
+        // Fetch all approved pages to update Algolia
+        const updatedPages = await Handbook.find({
+          createdBy: handbook.createdBy,
+          createdAt: {
+            $gte: new Date(handbook.createdAt.getTime() - 60000),
+            $lte: new Date(handbook.createdAt.getTime() + 60000)
+          },
+          status: 'approved'
+        });
+        
+        for (const page of updatedPages) {
+          try {
+            await saveHandbookToAlgolia(page);
+          } catch (algoliaError) {
+            console.error(`Algolia sync (handbook page ${page.pageNumber}) failed:`, algoliaError);
+          }
+        }
+        
+        await logActivity('system_admin', 'handbook_approve', `Handbook approved with ${updatedPages.length} pages: ${handbook.fileName || 'Handbook'}`, { 
+          handbookCount: updatedPages.length,
+          fileName: handbook.fileName,
+          status: 'approved'
         }, req);
+        
+        // Send push notification once for the entire handbook
+        try {
+          await sendPushToAllUsers('New Handbook Published', `The student handbook "${handbook.fileName || 'Handbook'}" is now available.`);
+        } catch (pushErr) {
+          console.error('Push send error (handbook approve):', pushErr);
+        }
+        
+        try {
+          emitGlobal('handbook:approved', { id: handbook._id, fileName: handbook.fileName });
+        } catch (e) {}
+        
+        const response = { 
+          message: `Handbook approved successfully with ${updatedPages.length} pages`, 
+          totalPages: updatedPages.length,
+          handbook: updatedPages[0] // Return first page as representative
+        };
+        logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}`, 200, response);
+        return res.json(response);
       }
     }
 
+    // For reject status, just update this single page
     handbook.status = status;
     await handbook.save();
 
-    try {
-      await saveHandbookToAlgolia(handbook);
-    } catch (algoliaError) {
-      console.error('Algolia sync (handbook) failed:', algoliaError);
-    }
-
-    await logActivity('system_admin', 'handbook_approve', `Handbook ${status}: ${handbook.fileName || handbook._id}`, { 
-      handbookId: id, 
-      fileName: handbook.fileName,
-      status 
-    }, req);
-
-    // If approved, send push to all users
-    if (status === 'approved') {
+    // For reject status, update Algolia and log
+    if (status === 'rejected') {
       try {
-        await sendPushToAllUsers('New Handbook Published', `The student handbook "${handbook.fileName || 'Handbook'}" is now available.`);
-      } catch (pushErr) {
-        console.error('Push send error (handbook approve):', pushErr);
+        await saveHandbookToAlgolia(handbook);
+      } catch (algoliaError) {
+        console.error('Algolia sync (handbook) failed:', algoliaError);
       }
-      try {
-        emitGlobal('handbook:approved', { id: handbook._id, fileName: handbook.fileName });
-      } catch (e) {}
+
+      await logActivity('system_admin', 'handbook_reject', `Handbook rejected: ${handbook.fileName || handbook._id}`, { 
+        handbookId: id, 
+        fileName: handbook.fileName,
+        status 
+      }, req);
     }
+    
     const response = { message: `Handbook ${status} successfully`, handbook };
     logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}`, 200, response);
     res.json(response);

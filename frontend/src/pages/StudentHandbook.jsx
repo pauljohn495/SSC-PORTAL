@@ -11,10 +11,9 @@ const StudentHandbook = () => {
   const [currentPageIndex, setCurrentPageIndex] = useState(0)
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
   const [pendingPage, setPendingPage] = useState(null)
-  const [showPageInput, setShowPageInput] = useState(false)
-  const [pageInput, setPageInput] = useState('')
   const [pdfError, setPdfError] = useState(null)
   const [pdfLoaded, setPdfLoaded] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const downloadMenuRef = useRef(null)
   const pdfIframeRef = useRef(null)
   const { logout, user, loading: authLoading } = useAuth()
@@ -34,18 +33,19 @@ const StudentHandbook = () => {
       const data = await response.json()
       console.log('Fetched handbook data:', data) // Debug log
       
-      // Get the approved handbook (should be only one now)
-      const approvedHandbook = data.find(h => h.status === 'approved') || data[0]
+      // Get all approved handbook pages, sorted by pageNumber
+      const approvedPages = data.filter(h => h.status === 'approved')
+        .sort((a, b) => {
+          // Sort by pageNumber if available, otherwise by creation date
+          if (a.pageNumber && b.pageNumber) {
+            return a.pageNumber - b.pageNumber
+          }
+          return new Date(a.createdAt) - new Date(b.createdAt)
+        })
       
-      if (approvedHandbook) {
-        console.log('Approved handbook found:', approvedHandbook) // Debug log
-        console.log('Handbook fileUrl:', approvedHandbook.fileUrl) // Debug log
-      } else {
-        console.log('No approved handbook found') // Debug log
-      }
+      console.log(`Found ${approvedPages.length} approved handbook pages`)
       
-      // Set as single handbook or array for backward compatibility
-      setHandbookPages(approvedHandbook ? [approvedHandbook] : [])
+      setHandbookPages(approvedPages)
     } catch (error) {
       console.error('Error fetching handbook:', error)
       setPdfError(`Failed to load handbook: ${error.message}`)
@@ -67,20 +67,25 @@ const StudentHandbook = () => {
     }
   }, [user, fetchHandbook])
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.has('page')) {
-      const pageValue = Number(params.get('page'))
-      if (!Number.isNaN(pageValue)) {
-        setPendingPage(pageValue)
-      }
-    }
-  }, [location.search])
-
   // For single handbook, no need to sort by pageNumber
   const sortedPages = handbookPages
   const currentPage = sortedPages[currentPageIndex]
   const totalPages = sortedPages.length
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.has('page')) {
+      const pageValue = Number(params.get('page'))
+      if (!Number.isNaN(pageValue) && pageValue > 0) {
+        setPendingPage(pageValue)
+        // Find the index of the page with this pageNumber
+        const pageIndex = sortedPages.findIndex(p => p.pageNumber === pageValue)
+        if (pageIndex !== -1) {
+          setCurrentPageIndex(pageIndex)
+        }
+      }
+    }
+  }, [location.search, sortedPages])
 
   // Reset PDF loaded state when page changes
   useEffect(() => {
@@ -166,18 +171,35 @@ const StudentHandbook = () => {
     }
   }
 
-  const downloadCurrentPageAsPDF = () => {
-    if (!currentPage) return
-    setShowPageInput(true)
-    setDownloadMenuOpen(false)
+  const handleSearch = () => {
+    if (!searchQuery.trim() || sortedPages.length === 0) return
+
+    const query = searchQuery.toLowerCase().trim()
+    
+    // Search through pdfContent of all pages
+    for (let i = 0; i < sortedPages.length; i++) {
+      const page = sortedPages[i]
+      const content = (page.pdfContent || page.content || '').toLowerCase()
+      
+      if (content.includes(query)) {
+        // Found the term in this page, navigate to it
+        goToPage(i)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+    }
+    
+    // If not found, show a message (you could use a toast here)
+    alert(`No results found for "${searchQuery}"`)
   }
 
-  const handleDownloadPage = async () => {
+  const downloadCurrentPageAsPDF = async () => {
     if (!currentPage || !currentPage._id) return
 
     try {
-      const pageParam = pageInput.trim()
-      const url = `http://localhost:5001/api/handbook/${currentPage._id}/download-page${pageParam ? `?page=${encodeURIComponent(pageParam)}` : ''}`
+      // Get the current page number
+      const currentPageNum = currentPage.pageNumber || currentPageIndex + 1
+      const url = `http://localhost:5001/api/handbook/${currentPage._id}/download-page?page=${currentPageNum}`
       
       const response = await fetch(url)
       
@@ -210,6 +232,10 @@ const StudentHandbook = () => {
         if (filenameMatch && filenameMatch[1]) {
           filename = filenameMatch[1].replace(/['"]/g, '')
         }
+      } else {
+        // Generate filename based on current page
+        const baseName = currentPage.fileName ? currentPage.fileName.replace('.pdf', '') : 'handbook'
+        filename = `${baseName}-page-${currentPageNum}.pdf`
       }
 
       // Create blob and download with explicit PDF type
@@ -238,14 +264,13 @@ const StudentHandbook = () => {
         URL.revokeObjectURL(link.href)
       }, 100)
 
-      setShowPageInput(false)
-      setPageInput('')
       setDownloadMenuOpen(false)
     } catch (error) {
       console.error('Error downloading page:', error)
       alert('Failed to download page. Please try again.')
     }
   }
+
 
   const downloadFullHandbook = () => {
     if (!currentPage) return
@@ -464,6 +489,38 @@ const StudentHandbook = () => {
       {/* Main Content */}
       <main className='p-8'>
         <div className='max-w-4xl mx-auto relative'>
+          {/* Search Bar */}
+          <div className='mb-6'>
+            <div className='relative'>
+              <input
+                type='text'
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearch()
+                  }
+                }}
+                placeholder='Search handbook by keywords...'
+                className='w-full px-4 py-3 pl-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
+              />
+              <svg
+                className='absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' />
+              </svg>
+              <button
+                onClick={handleSearch}
+                className='absolute right-4 top-1/2 transform -translate-y-1/2 bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors'
+              >
+                Search
+              </button>
+            </div>
+          </div>
+
           <div className='flex justify-between items-center mb-6'>
             <div className='flex-1'></div>
             <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>STUDENT HANDBOOK</h1>
@@ -485,7 +542,7 @@ const StudentHandbook = () => {
                       onClick={downloadCurrentPageAsPDF}
                       className='block w-full text-left px-4 py-3 hover:bg-gray-100 transition rounded-t-lg text-black'
                     >
-                      Download Specific Page(s)
+                      Download This Page
                     </button>
                     <button
                       onClick={downloadFullHandbook}
@@ -587,7 +644,7 @@ const StudentHandbook = () => {
                     </button>
                     
                     <span className='text-gray-700 font-medium'>
-                      Page {currentPageIndex + 1} of {totalPages}
+                      Page {currentPage?.pageNumber || currentPageIndex + 1} of {totalPages}
                     </span>
                     
                     <button
@@ -599,22 +656,89 @@ const StudentHandbook = () => {
                     </button>
                   </div>
 
-                  {/* Page Number Buttons */}
-                  <div className='flex flex-wrap justify-center gap-2 max-w-2xl'>
-                    {sortedPages.map((page, index) => (
-                      <button
-                        key={page._id}
-                        onClick={() => goToPage(index)}
-                        className={`px-3 py-2 rounded-lg font-medium transition-colors ${
-                          index === currentPageIndex
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                        title={`Go to page ${page.pageNumber || index + 1}`}
-                      >
-                        {page.pageNumber || index + 1}
-                      </button>
-                    ))}
+                  {/* Page Number Buttons - Show only 10 at a time */}
+                  <div className='flex flex-wrap justify-center gap-2 max-w-2xl items-center'>
+                    {/* Calculate which 10 pages to show */}
+                    {(() => {
+                      const pagesPerView = 10
+                      const currentPageNum = currentPage?.pageNumber || currentPageIndex + 1
+                      
+                      // Calculate the start page of the current window
+                      // If on page 11, we want to show pages 11-20
+                      const windowStart = Math.floor((currentPageNum - 1) / pagesPerView) * pagesPerView + 1
+                      const windowEnd = Math.min(windowStart + pagesPerView - 1, totalPages)
+                      
+                      // Find the indices for pages in this window
+                      const visiblePages = sortedPages.filter((page, index) => {
+                        const pageNum = page.pageNumber || index + 1
+                        return pageNum >= windowStart && pageNum <= windowEnd
+                      })
+                      
+                      return (
+                        <>
+                          {/* Show "..." if there are pages before the current window */}
+                          {windowStart > 1 && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const firstPageIndex = sortedPages.findIndex(p => (p.pageNumber || sortedPages.indexOf(p) + 1) === 1)
+                                  if (firstPageIndex !== -1) goToPage(firstPageIndex)
+                                }}
+                                className='px-3 py-2 rounded-lg font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors'
+                                title='Go to page 1'
+                              >
+                                1
+                              </button>
+                              {windowStart > 2 && (
+                                <span className='text-gray-500 px-2'>...</span>
+                              )}
+                            </>
+                          )}
+                          
+                          {/* Show the 10 visible page numbers */}
+                          {visiblePages.map((page, idx) => {
+                            const pageIndex = sortedPages.findIndex(p => p._id === page._id)
+                            const pageNum = page.pageNumber || pageIndex + 1
+                            return (
+                              <button
+                                key={page._id}
+                                onClick={() => goToPage(pageIndex)}
+                                className={`px-3 py-2 rounded-lg font-medium transition-colors ${
+                                  pageIndex === currentPageIndex
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                                title={`Go to page ${pageNum}`}
+                              >
+                                {pageNum}
+                              </button>
+                            )
+                          })}
+                          
+                          {/* Show "..." if there are pages after the current window */}
+                          {windowEnd < totalPages && (
+                            <>
+                              {windowEnd < totalPages - 1 && (
+                                <span className='text-gray-500 px-2'>...</span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  const lastPageIndex = sortedPages.findIndex(p => {
+                                    const pageNum = p.pageNumber || sortedPages.indexOf(p) + 1
+                                    return pageNum === totalPages
+                                  })
+                                  if (lastPageIndex !== -1) goToPage(lastPageIndex)
+                                }}
+                                className='px-3 py-2 rounded-lg font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors'
+                                title={`Go to page ${totalPages}`}
+                              >
+                                {totalPages}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               )}
@@ -623,52 +747,6 @@ const StudentHandbook = () => {
         </div>
       </main>
 
-      {/* Page Input Modal */}
-      {showPageInput && (
-        <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50' onClick={() => setShowPageInput(false)}>
-          <div className='bg-white rounded-lg p-6 w-full max-w-md' onClick={(e) => e.stopPropagation()}>
-            <h2 className='text-2xl font-bold mb-4 text-blue-950'>Download Page(s)</h2>
-            <p className='text-sm text-gray-600 mb-4'>
-              Enter the page number(s) you want to download:
-            </p>
-            <ul className='text-xs text-gray-500 mb-4 list-disc list-inside space-y-1'>
-              <li>Single page: <strong>5</strong></li>
-              <li>Multiple pages: <strong>1,3,5</strong></li>
-              <li>Page range: <strong>1-5</strong></li>
-              <li>Leave empty to download all pages</li>
-            </ul>
-            <input
-              type='text'
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              placeholder='e.g., 5 or 1-5 or 1,3,5'
-              className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black mb-4'
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  handleDownloadPage()
-                }
-              }}
-            />
-            <div className='flex space-x-4'>
-              <button
-                onClick={handleDownloadPage}
-                className='flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors'
-              >
-                Download
-              </button>
-              <button
-                onClick={() => {
-                  setShowPageInput(false)
-                  setPageInput('')
-                }}
-                className='flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors'
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

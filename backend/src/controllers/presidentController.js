@@ -378,48 +378,56 @@ export const createHandbook = async (req, res, next) => {
       return res.status(403).json(response);
     }
 
-    // Check if there's already an approved handbook - only allow one approved handbook at a time
-    const existingApproved = await Handbook.findOne({ status: 'approved' });
-    if (existingApproved) {
-      const response = { message: 'An approved handbook already exists. Please archive or reject the existing one first.' };
-      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 400, response);
-      return res.status(400).json(response);
+    // Check if there's already an approved handbook - delete all old pages first
+    const existingApproved = await Handbook.find({ status: 'approved' });
+    if (existingApproved.length > 0) {
+      // Delete old PDF files
+      const { deletePDFFile } = await import('../utils/fileStorage.js');
+      for (const oldHandbook of existingApproved) {
+        if (oldHandbook.fileUrl && !oldHandbook.fileUrl.startsWith('data:')) {
+          deletePDFFile(oldHandbook.fileUrl);
+        }
+      }
+      // Delete old handbook entries
+      await Handbook.deleteMany({ status: 'approved' });
     }
 
-    // Save PDF to filesystem instead of storing in database
-    const { savePDFToFile } = await import('../utils/fileStorage.js');
-    const filePath = savePDFToFile(fileUrl, fileName || 'handbook.pdf');
-
-    // Extract text from PDF for searchability
-    let pdfContent = '';
-    try {
-      pdfContent = await extractTextFromPDF(filePath);
-    } catch (error) {
-      console.error('Failed to extract PDF text:', error);
-      // Continue even if extraction fails
+    // Split PDF into individual pages
+    const { splitPDFIntoPages } = await import('../utils/pdfSplitter.js');
+    const pages = await splitPDFIntoPages(fileUrl, fileName || 'handbook.pdf');
+    
+    console.log(`Creating ${pages.length} handbook entries...`);
+    
+    // Create Handbook entry for each page
+    const createdHandbooks = [];
+    for (const page of pages) {
+      const handbook = new Handbook({
+        fileUrl: page.filePath,
+        fileName: `${fileName || 'handbook.pdf'} - Page ${page.pageNumber}`,
+        pdfContent: page.pdfContent,
+        pageNumber: page.pageNumber,
+        createdBy: userId
+      });
+      await handbook.save();
+      createdHandbooks.push(handbook);
     }
 
-    const handbook = new Handbook({ 
-      fileUrl: filePath, // Store file path instead of base64
-      fileName: fileName || 'handbook.pdf',
-      pdfContent,
-      createdBy: userId 
-    });
-    await handbook.save();
-
-    await logActivity(userId, 'handbook_create', `Handbook created: ${fileName || 'handbook.pdf'}`, { 
-      handbookId: handbook._id,
+    await logActivity(userId, 'handbook_create', `Handbook created with ${pages.length} pages: ${fileName || 'handbook.pdf'}`, { 
+      handbookCount: pages.length,
       fileName: fileName || 'handbook.pdf'
     }, req);
 
-    // Return handbook without large fileUrl to avoid large response payloads
-    const handbookResponse = handbook.toObject();
+    // Return summary without large fileUrl to avoid large response payloads
     const response = { 
-      message: 'Handbook draft created', 
-      handbook: {
-        ...handbookResponse,
-        fileUrl: handbookResponse.fileUrl // File path is small, safe to include
-      }
+      message: `Handbook draft created with ${pages.length} pages`, 
+      totalPages: pages.length,
+      handbooks: createdHandbooks.map(h => ({
+        _id: h._id,
+        pageNumber: h.pageNumber,
+        fileName: h.fileName,
+        status: h.status,
+        createdAt: h.createdAt
+      }))
     };
     logAndSetHeader(req, res, 'POST', '/api/president/handbook', 201, response);
     res.status(201).json(response);
