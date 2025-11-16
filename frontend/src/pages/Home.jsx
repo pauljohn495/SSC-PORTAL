@@ -102,6 +102,7 @@ const Home = () => {
 
     const params = new URLSearchParams()
     params.set('q', homeSearch.trim())
+    params.set('type', 'memorandum')
     navigate(`/search?${params.toString()}`)
   }
 

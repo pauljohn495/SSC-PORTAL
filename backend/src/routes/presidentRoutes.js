@@ -31,7 +31,7 @@ router.get('/calendar/oauth/callback', calendarController.oauthCallback);
 router.get('/calendar/events', calendarController.listEvents);
 router.post('/calendar/events', calendarController.createEvent);
 router.put('/calendar/events/:eventId', calendarController.updateEvent);
-router.delete('/calendar/events/:eventId', calendarController.deleteEvent);
+router.put('/calendar/events/:eventId/archive', calendarController.archiveEvent);
 
 export default router;
 

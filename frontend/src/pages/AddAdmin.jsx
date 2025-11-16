@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 const AddAdmin = () => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
-  const [adminForm, setAdminForm] = useState({ username: '', password: '', name: '', email: '' });
+  const [adminForm, setAdminForm] = useState({ email: '' });
   const [message, setMessage] = useState('');
 
   if (!user || user.role !== 'admin') {
@@ -28,7 +28,7 @@ const AddAdmin = () => {
       const data = await response.json();
       setMessage(data.message);
       if (response.ok) {
-        setAdminForm({ username: '', password: '', name: '', email: '' });
+        setAdminForm({ email: '' });
       }
     } catch (error) {
       setMessage('Error creating admin account');
@@ -73,38 +73,8 @@ const AddAdmin = () => {
           )}
 
           <div className='bg-white p-6 rounded-lg shadow-md'>
-            <p className='text-sm text-gray-600 mb-4'>Create a new admin account with username and password for manual login.</p>
+            <p className='text-sm text-gray-600 mb-4'>Add a new admin by entering their email address. They will receive an email with a link to complete their account setup (create username and password).</p>
             <form onSubmit={handleAddAdmin} className='space-y-4'>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Username</label>
-                <input
-                  type='text'
-                  value={adminForm.username}
-                  onChange={(e) => setAdminForm({...adminForm, username: e.target.value})}
-                  className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
-                  required
-                />
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Password</label>
-                <input
-                  type='password'
-                  value={adminForm.password}
-                  onChange={(e) => setAdminForm({...adminForm, password: e.target.value})}
-                  className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
-                  required
-                />
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-700 mb-1'>Full Name</label>
-                <input
-                  type='text'
-                  value={adminForm.name}
-                  onChange={(e) => setAdminForm({...adminForm, name: e.target.value})}
-                  className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
-                  required
-                />
-              </div>
               <div>
                 <label className='block text-sm font-medium text-gray-700 mb-1'>Email</label>
                 <input
@@ -112,6 +82,7 @@ const AddAdmin = () => {
                   value={adminForm.email}
                   onChange={(e) => setAdminForm({...adminForm, email: e.target.value})}
                   className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500'
+                  placeholder='admin@example.com'
                   required
                 />
               </div>
@@ -119,7 +90,7 @@ const AddAdmin = () => {
                 type='submit'
                 className='bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors'
               >
-                Create Admin
+                Send Admin Invitation
               </button>
             </form>
           </div>

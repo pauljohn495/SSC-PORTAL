@@ -10,7 +10,7 @@ const ManageUsers = () => {
   const [showAddPresident, setShowAddPresident] = useState(false);
   const [showAddAdmin, setShowAddAdmin] = useState(false);
   const [presidentEmail, setPresidentEmail] = useState('');
-  const [adminForm, setAdminForm] = useState({ username: '', password: '', name: '', email: '' });
+  const [adminForm, setAdminForm] = useState({ name: '', email: '' });
   const [message, setMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -131,7 +131,7 @@ const ManageUsers = () => {
       
       if (response.ok) {
         setMessage(data.message);
-        setAdminForm({ username: '', password: '', name: '', email: '' });
+        setAdminForm({ name: '', email: '' });
         setShowAddAdmin(false);
         fetchUsers(); // Refresh the list to show the new admin
       } else {
@@ -143,13 +143,13 @@ const ManageUsers = () => {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) {
+  const handleArchiveUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to archive this user? They will no longer be able to access the system.')) {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5001/api/admin/users/${userId}`, {
-        method: 'DELETE'
+      const response = await fetch(`http://localhost:5001/api/admin/users/${userId}/archive`, {
+        method: 'PUT'
       });
       
       // Check for API log header and log to browser console
@@ -169,8 +169,8 @@ const ManageUsers = () => {
         setUsers(users.filter(user => user._id !== userId)); // Remove from list immediately
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
-      setMessage('Error deleting user');
+      console.error('Error archiving user:', error);
+      setMessage('Error archiving user');
     }
   };
 
@@ -264,7 +264,7 @@ const ManageUsers = () => {
             {/* Add Admin Section */}
             <div className='bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow'>
               <h2 className='text-xl font-semibold mb-4 text-gray-800'>Create Admin Account</h2>
-              <p className='text-sm text-gray-600 mb-4'>Create a new admin account with username and password for manual login.</p>
+              <p className='text-sm text-gray-600 mb-4'>Create a new admin account. The admin will receive an email to complete their account setup.</p>
               <button
                 onClick={() => setShowAddAdmin(!showAddAdmin)}
                 className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors'
@@ -273,26 +273,6 @@ const ManageUsers = () => {
               </button>
               {showAddAdmin && (
                 <form onSubmit={handleAddAdmin} className='mt-4 space-y-4'>
-                  <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-1'>Username</label>
-                    <input
-                      type='text'
-                      value={adminForm.username}
-                      onChange={(e) => setAdminForm({...adminForm, username: e.target.value})}
-                      className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900'
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className='block text-sm font-medium text-gray-700 mb-1'>Password</label>
-                    <input
-                      type='password'
-                      value={adminForm.password}
-                      onChange={(e) => setAdminForm({...adminForm, password: e.target.value})}
-                      className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900'
-                      required
-                    />
-                  </div>
                   <div>
                     <label className='block text-sm font-medium text-gray-700 mb-1'>Full Name</label>
                     <input
@@ -360,34 +340,21 @@ const ManageUsers = () => {
                             </span>
                           </div>
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600'>
+                            <p><span className='font-medium'>Fullname:</span> {user.name || <span className='italic text-gray-400'>Not set</span>}</p>
                             <p><span className='font-medium'>Email:</span> {user.email}</p>
-                            {user.username && <p><span className='font-medium'>Username:</span> {user.username}</p>}
-                            <p>
-                              <span className='font-medium'>Department:</span>{' '}
-                              {user.department || <span className='italic text-gray-400'>Not set</span>}
-                            </p>
-                            <p>
-                              <span className='font-medium'>Course:</span>{' '}
-                              {user.course || <span className='italic text-gray-400'>Not set</span>}
-                            </p>
-                            {user.createdAt && (
-                              <p><span className='font-medium'>Registered:</span> {new Date(user.createdAt).toLocaleDateString('en-US', { 
-                                year: 'numeric', 
-                                month: 'short', 
-                                day: 'numeric' 
-                              })}</p>
-                            )}
                           </div>
                         </div>
+
                         <button
-                          onClick={() => handleDeleteUser(user._id)}
-                          className='ml-4 text-red-500 hover:text-red-700 transition-colors p-2'
-                          title='Delete user'
+                          onClick={() => handleArchiveUser(user._id)}
+                          className='ml-4 text-orange-500 hover:text-orange-700 transition-colors p-2'
+                          title='Archive user'
                         >
-                          <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1-1 0 00-1 1v3M4 7h16' />
-                          </svg>
+                      <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' />
+                      </svg>
                         </button>
+                        
                       </div>
                     </div>
                   ))}
@@ -404,3 +371,4 @@ const ManageUsers = () => {
 };
 
 export default ManageUsers;
+

@@ -1,21 +1,44 @@
 
 import { PDFParse } from 'pdf-parse';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
- * Extract text content from a base64-encoded PDF
- * @param {string} base64File 
+ * Extract text content from a PDF (base64-encoded or file path)
+ * @param {string} pdfSource - Base64 encoded PDF or file path
  * @returns {Promise<string>} 
  */
-export const extractTextFromPDF = async (base64File) => {
+export const extractTextFromPDF = async (pdfSource) => {
   try {
-    // Remove data URI prefix if present
-    let base64Data = base64File;
-    if (base64File.includes('base64,')) {
-      base64Data = base64File.split('base64,')[1];
-    }
+    let buffer;
 
-    // Convert base64 to buffer
-    const buffer = Buffer.from(base64Data, 'base64');
+    // Check if it's a file path (starts with 'uploads/')
+    if (pdfSource && !pdfSource.startsWith('data:') && pdfSource.startsWith('uploads/')) {
+      // Read from file system
+      const fullPath = path.join(__dirname, '../../', pdfSource);
+      if (!fs.existsSync(fullPath)) {
+        console.error('PDF file not found:', fullPath);
+        return '';
+      }
+      buffer = fs.readFileSync(fullPath);
+    } else {
+      // Handle base64 encoded PDF
+      let base64Data = pdfSource;
+      if (pdfSource && pdfSource.includes('base64,')) {
+        base64Data = pdfSource.split('base64,')[1];
+      }
+
+      if (!base64Data) {
+        return '';
+      }
+
+      // Convert base64 to buffer
+      buffer = Buffer.from(base64Data, 'base64');
+    }
 
     // Extract text from PDF using PDFParse class
     const parser = new PDFParse({ data: buffer });

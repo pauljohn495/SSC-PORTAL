@@ -4,3 +4,7 @@ backend/.env
 frontend/.env:1
 frontend/.env:2
 .env
+
+# Uploaded files
+backend/uploads/
+uploads/

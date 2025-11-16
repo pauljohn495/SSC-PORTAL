@@ -10,7 +10,7 @@ const Search = () => {
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('memorandum')
   const [yearFilter, setYearFilter] = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
@@ -76,7 +76,7 @@ const Search = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const initialQuery = params.get('q') || ''
-    const initialType = params.get('type') || 'all'
+    const initialType = params.get('type') || 'memorandum'
     const initialYear = params.get('year') || ''
 
     let shouldTriggerSearch = false
@@ -100,18 +100,6 @@ const Search = () => {
   }, [location.search, performSearch])
 
   const handleResultClick = (item) => {
-    if (item.type === 'handbook') {
-      const params = new URLSearchParams()
-      if (item.pageNumber) {
-        params.set('page', item.pageNumber)
-      }
-      if (query.trim()) {
-        params.set('q', query.trim())
-      }
-      navigate(`/student-handbook${params.toString() ? `?${params.toString()}` : ''}`)
-      return
-    }
-
     if (item.type === 'memorandum') {
       const params = new URLSearchParams()
       params.set('memoId', item.id)
@@ -178,7 +166,7 @@ const Search = () => {
 
       <main className='p-6 md:p-10 bg-gray-50 min-h-[calc(100vh-64px)]'>
         <div className='max-w-5xl mx-auto bg-white rounded-lg shadow p-6'>
-          <h1 className='text-2xl font-bold text-blue-950 mb-4'>Search Handbooks & Memorandums</h1>
+          <h1 className='text-2xl font-bold text-blue-950 mb-4'>Search Memorandums</h1>
 
           <form onSubmit={handleSearch} className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-6'>
             <div className='md:col-span-2'>
@@ -199,8 +187,6 @@ const Search = () => {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
               >
-                <option value='all'>All</option>
-                <option value='handbook'>Handbook</option>
                 <option value='memorandum'>Memorandum</option>
               </select>
             </div>
@@ -255,7 +241,6 @@ const Search = () => {
                         {item.type}
                       </span>
                       <span className='text-xs text-gray-500'>
-                        {item.type === 'handbook' && item.pageNumber ? `Page ${item.pageNumber}` : ''}
                         {item.type === 'memorandum' && item.year ? `Year ${item.year}` : ''}
                       </span>
                     </div>

@@ -1,5 +1,6 @@
 import { google } from 'googleapis'
 import User from '../models/User.js'
+import CalendarEvent from '../models/CalendarEvent.js'
 import { config } from '../config/index.js'
 
 // Helper function to create simplified log and set response header
@@ -233,6 +234,23 @@ export const createEvent = async (req, res) => {
       }
     }
     const calendarResponse = await calendar.events.insert({ calendarId, requestBody: event })
+    
+    // Store event in database for archiving purposes
+    try {
+      await CalendarEvent.create({
+        googleEventId: calendarResponse.data.id,
+        summary: calendarResponse.data.summary,
+        description: calendarResponse.data.description,
+        location: calendarResponse.data.location,
+        start: calendarResponse.data.start?.dateTime ? new Date(calendarResponse.data.start.dateTime) : null,
+        end: calendarResponse.data.end?.dateTime ? new Date(calendarResponse.data.end.dateTime) : null,
+        createdBy: user._id
+      })
+    } catch (dbError) {
+      // Log error but don't fail the request if DB save fails
+      console.error('Error saving event to database:', dbError)
+    }
+    
     const response = { 
       ...calendarResponse.data,
       message: 'Calendar event created successfully'
@@ -273,21 +291,59 @@ export const updateEvent = async (req, res) => {
   }
 }
 
-export const deleteEvent = async (req, res) => {
+export const archiveEvent = async (req, res) => {
   try {
     const { userId } = req.query
     const { eventId } = req.params
     const user = await ensurePresident(userId)
     const calendar = getCalendarClient(user)
     const calendarId = config.google.calendarId || 'primary'
-    await calendar.events.delete({ calendarId, eventId })
-    const response = { success: true }
-    logAndSetHeader(req, res, 'DELETE', `/api/president/calendar/events/${eventId}`, 200, response)
+    
+    // Get event details before archiving
+    let eventDetails = null
+    try {
+      const eventResponse = await calendar.events.get({ calendarId, eventId })
+      eventDetails = eventResponse.data
+    } catch (e) {
+      // Event might not exist in Google Calendar, but we'll still try to archive in DB
+    }
+    
+    // Archive event in Google Calendar (delete it)
+    try {
+      await calendar.events.delete({ calendarId, eventId })
+    } catch (e) {
+      // If deletion fails, continue to archive in DB anyway
+      console.error('Error deleting event from Google Calendar:', e.message)
+    }
+    
+    // Archive event in database
+    const calendarEvent = await CalendarEvent.findOne({ googleEventId: eventId })
+    if (calendarEvent) {
+      calendarEvent.archived = true
+      calendarEvent.archivedAt = new Date()
+      await calendarEvent.save()
+    } else if (eventDetails) {
+      // Create archived record if it doesn't exist
+      await CalendarEvent.create({
+        googleEventId: eventId,
+        summary: eventDetails.summary,
+        description: eventDetails.description,
+        location: eventDetails.location,
+        start: eventDetails.start?.dateTime ? new Date(eventDetails.start.dateTime) : null,
+        end: eventDetails.end?.dateTime ? new Date(eventDetails.end.dateTime) : null,
+        createdBy: user._id,
+        archived: true,
+        archivedAt: new Date()
+      })
+    }
+    
+    const response = { success: true, message: 'Event archived successfully' }
+    logAndSetHeader(req, res, 'PUT', `/api/president/calendar/events/${eventId}/archive`, 200, response)
     res.json(response)
   } catch (e) {
     const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
     const response = { message: e.message }
-    logAndSetHeader(req, res, 'DELETE', `/api/president/calendar/events/${eventId}`, status, response)
+    logAndSetHeader(req, res, 'PUT', `/api/president/calendar/events/${eventId}/archive`, status, response)
     res.status(status).json(response)
   }
 }

@@ -17,8 +17,11 @@ app.use(cors({
   origin: config.corsOrigin.split(','),
   exposedHeaders: ['X-API-Log']
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '110mb' }));
+app.use(express.urlencoded({ limit: '110mb', extended: true }));
+
+// Serve uploaded files statically
+app.use('/uploads', express.static('uploads'));
 
 // Health check
 app.get('/api/health', (req, res) => {

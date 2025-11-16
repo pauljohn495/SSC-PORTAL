@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
 
 const handbookSchema = new mongoose.Schema({
-  content: { type: String, required: true },
-  pageNumber: { type: Number, required: true, unique: true },
+  content: { type: String }, // Optional, kept for backward compatibility
+  fileUrl: { type: String }, // Base64 encoded PDF (optional for backward compatibility)
+  fileName: { type: String, default: '' },
+  pdfContent: { type: String, default: '' }, // Extracted text content from PDF
+  pageNumber: { type: Number }, // Optional, kept for backward compatibility with old handbooks
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },

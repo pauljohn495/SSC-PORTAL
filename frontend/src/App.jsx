@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
+import SetupAccount from './pages/SetupAccount'
 import Memorandum from './pages/Memorandum'
 import StudentHandbook from './pages/StudentHandbook'
 import AdminDashboard from './pages/AdminDashboard'
@@ -83,6 +84,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/setup-account" element={<SetupAccount />} />
           <Route path="/memorandum" element={<Memorandum />} />
           <Route path="/student-handbook" element={<StudentHandbook />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />

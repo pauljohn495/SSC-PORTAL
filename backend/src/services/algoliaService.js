@@ -96,20 +96,32 @@ const baseDocument = (data) => ({
   version: data.version ?? 1
 });
 
-const buildHandbookDocument = (handbook) => ({
-  ...baseDocument({
-    id: handbook._id.toString(),
-    type: 'handbook',
-    title: `Handbook Page ${handbook.pageNumber}`,
-    content: handbook.content || '',
-    status: handbook.status,
-    visibility: 'student',
-    pageNumber: handbook.pageNumber,
-    createdAt: handbook.createdAt?.toISOString?.() || new Date().toISOString(),
-    uploadedAt: handbook.updatedAt?.toISOString?.() || handbook.createdAt?.toISOString?.(),
-    version: handbook.version
-  })
-});
+const buildHandbookDocument = (handbook) => {
+  // Combine content, fileName, and PDF content for searchable content
+  const searchableContent = [
+    handbook.content || '',
+    handbook.fileName || '',
+    handbook.pdfContent || ''
+  ].filter(Boolean).join(' ').trim();
+  
+  return {
+    ...baseDocument({
+      id: handbook._id.toString(),
+      type: 'handbook',
+      title: handbook.fileName || `Handbook Page ${handbook.pageNumber || ''}`,
+      content: searchableContent || handbook.content || '',
+      status: handbook.status,
+      visibility: 'student',
+      pageNumber: handbook.pageNumber,
+      createdAt: handbook.createdAt?.toISOString?.() || new Date().toISOString(),
+      uploadedAt: handbook.updatedAt?.toISOString?.() || handbook.createdAt?.toISOString?.(),
+      version: handbook.version
+    }),
+    fileUrl: handbook.fileUrl || '',
+    fileName: handbook.fileName || '',
+    pdfContent: handbook.pdfContent || ''
+  };
+};
 
 const buildMemorandumDocument = (memorandum) => {
   // Combine title, fileName, and PDF content for searchable content

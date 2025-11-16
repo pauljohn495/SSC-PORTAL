@@ -1,5 +1,4 @@
 import { searchAlgolia } from '../services/algoliaService.js';
-import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -9,19 +8,6 @@ const highlightText = (text = '', query = '') => {
   const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
   return text.replace(regex, '<mark>$1</mark>');
 };
-
-const buildHandbookResult = (handbook, query) => ({
-  id: handbook._id.toString(),
-  type: 'handbook',
-  title: `Handbook Page ${handbook.pageNumber}`,
-  titleSnippet: highlightText(`Handbook Page ${handbook.pageNumber}`, query),
-  snippet: highlightText(handbook.content?.slice(0, 200) || '', query),
-  pageNumber: handbook.pageNumber,
-  year: null,
-  status: handbook.status,
-  createdAt: handbook.createdAt,
-  uploadedAt: handbook.updatedAt || handbook.createdAt
-});
 
 const buildMemorandumResult = (memorandum, query) => ({
   id: memorandum._id.toString(),
@@ -54,19 +40,6 @@ const dbFallbackSearch = async ({ query, role, type, year, limit = 50 }) => {
 
   const queryTasks = [];
 
-  if (normalizedType === 'all' || normalizedType === 'handbook') {
-    queryTasks.push({
-      key: 'handbook',
-      promise: Handbook.find({
-        status: 'approved',
-        content: regexQuery
-      })
-        .sort({ updatedAt: -1 })
-        .limit(limit)
-        .lean()
-    });
-  }
-
   if (normalizedType === 'all' || normalizedType === 'memorandum') {
     const memoFilter = {
       status: 'approved',
@@ -93,27 +66,20 @@ const dbFallbackSearch = async ({ query, role, type, year, limit = 50 }) => {
     queryTasks.map((task) => task.promise.catch(() => []))
   );
 
-  let handbooks = [];
   let memorandums = [];
 
   settledResults.forEach((docs, index) => {
     const { key } = queryTasks[index];
-    if (key === 'handbook') {
-      handbooks = docs;
-    } else if (key === 'memorandum') {
+    if (key === 'memorandum') {
       memorandums = docs;
     }
   });
-
-  const filteredHandbooks = handbooks
-    .filter(() => allowedVisibilities.includes('student'))
-    .map((handbook) => buildHandbookResult(handbook, trimmedQuery));
 
   const filteredMemos = memorandums
     .filter(() => allowedVisibilities.includes('student'))
     .map((memo) => buildMemorandumResult(memo, trimmedQuery));
 
-  return [...filteredHandbooks, ...filteredMemos]
+  return filteredMemos
     .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
     .slice(0, limit);
 };

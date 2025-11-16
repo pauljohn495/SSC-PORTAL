@@ -102,7 +102,8 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
 // Get all users
 export const getUsers = async (req, res, next) => {
   try {
-    const users = await User.find().sort({ createdAt: -1 });
+    // Only return non-archived users
+    const users = await User.find({ archived: { $ne: true } }).sort({ createdAt: -1 });
     logAndSetHeader(req, res, 'GET', '/api/admin/users', 200, users);
     res.json(users);
   } catch (error) {
@@ -110,126 +111,65 @@ export const getUsers = async (req, res, next) => {
   }
 };
 
-// Add admin user
+// Add admin user (requires email and name - new admin will set username/password via email link)
 export const addAdmin = async (req, res, next) => {
   try {
-    const { email, password, name, username } = req.body;
+    const { email, name } = req.body;
 
-    // Check for existing user with same email or username
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
-      // If user already exists as admin/president, update their details instead of blocking
-      // This allows reusing email addresses after deletion
-      if (existingUser.role === 'admin' || existingUser.role === 'president') {
-        // Update existing admin/president account with new details
-        existingUser.password = password;
-        existingUser.name = name;
-        existingUser.username = username;
-        // Keep the role as is (admin stays admin, president stays president)
-        await existingUser.save();
-        
-        // Send email notification
-        try {
-          const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-              user: config.email.user || 'your-email@gmail.com',
-              pass: config.email.pass || 'your-app-password'
-            }
-          });
-
-          const loginUrl = `${config.corsOrigin}/login`;
-          await transporter.sendMail({
-            from: config.email.user || 'your-email@gmail.com',
-            to: email,
-            subject: '[BUKSU SSC] Admin Account Updated',
-            html: `
-              <h2>Admin Account Updated</h2>
-              <p>Dear ${name || 'Admin'},</p>
-              <p>Your admin account has been updated with new credentials.</p>
-              <p><strong>Account Details:</strong></p>
-              <ul>
-                <li><strong>Email:</strong> ${email}</li>
-                <li><strong>Username:</strong> ${username}</li>
-                <li><strong>Password:</strong> ${password}</li>
-                <li><strong>Role:</strong> ${existingUser.role === 'admin' ? 'Admin' : 'President'}</li>
-              </ul>
-              <p>You can now log in to the portal using your credentials:</p>
-              <hr>
-              <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
-            `
-          });
-        } catch (emailError) {
-          console.error('Error sending admin account update email:', emailError);
-        }
-
-        await logActivity('system_admin', 'admin_update', `Admin account updated for ${email}`, {
-          adminEmail: email,
-          adminName: name,
-          adminUsername: username
-        }, req);
-
-        const response = { message: 'Admin account updated successfully', admin: existingUser };
-        logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 200, response);
-        return res.status(200).json(response);
-      }
-      // If it's a student, we can update them to admin
-      existingUser.role = 'admin';
-      existingUser.password = password;
-      existingUser.name = name;
-      existingUser.username = username;
-      await existingUser.save();
-      
-      // Send email notification
-      try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: config.email.user || 'your-email@gmail.com',
-            pass: config.email.pass || 'your-app-password'
-          }
-        });
-
-        const loginUrl = `${config.corsOrigin}/login`;
-        await transporter.sendMail({
-          from: config.email.user || 'your-email@gmail.com',
-          to: email,
-          subject: '[BUKSU SSC] Admin Account Created',
-          html: `
-            <h2>Welcome to BUKSU SSC Portal!</h2>
-            <p>Dear ${name || 'Admin'},</p>
-            <p>Your admin account has been successfully created.</p>
-            <p><strong>Account Details:</strong></p>
-            <ul>
-              <li><strong>Email:</strong> ${email}</li>
-              <li><strong>Username:</strong> ${username}</li>
-              <li><strong>Password:</strong> ${password}</li>
-              <li><strong>Role:</strong> Admin</li>
-            </ul>
-            <p>You can now log in to the portal using your credentials:</p>
-            <hr>
-            <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
-          `
-        });
-      } catch (emailError) {
-        console.error('Error sending admin account creation email:', emailError);
-      }
-
-      await logActivity('system_admin', 'admin_create', `Admin account created for ${email} (upgraded from student)`, {
-        adminEmail: email,
-        adminName: name,
-        adminUsername: username
-      }, req);
-
-      const response = { message: 'User upgraded to admin successfully', admin: existingUser };
-      logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 200, response);
-      return res.status(200).json(response);
+    if (!email) {
+      const response = { message: 'Email is required' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 400, response);
+      return res.status(400).json(response);
     }
 
-    const admin = new User({ email, password, name, username, role: 'admin' });
-    await admin.save();
+    if (!name) {
+      const response = { message: 'Full name is required' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 400, response);
+      return res.status(400).json(response);
+    }
 
-    // Send email notification to the new admin
+    // Check for existing user with same email
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      // If user already exists and is not archived, return error
+      if (!existingUser.archived) {
+        const response = { message: 'User with this email already exists' };
+        logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 400, response);
+        return res.status(400).json(response);
+      }
+      // If archived, we can reuse the account
+      existingUser.archived = false;
+      existingUser.archivedAt = null;
+    }
+
+    // Generate setup token
+    const setupToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const setupTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    let admin;
+    if (existingUser) {
+      // Update existing archived user
+      existingUser.role = 'admin';
+      existingUser.name = name;
+      existingUser.setupToken = setupToken;
+      existingUser.setupTokenExpiry = setupTokenExpiry;
+      existingUser.password = null; // Clear password until setup
+      existingUser.username = null; // Clear username until setup
+      await existingUser.save();
+      admin = existingUser;
+    } else {
+      // Create new admin account
+      admin = new User({ 
+        email,
+        name,
+        role: 'admin',
+        setupToken,
+        setupTokenExpiry
+      });
+      await admin.save();
+    }
+
+    // Send email notification with setup link
     try {
       const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -239,39 +179,34 @@ export const addAdmin = async (req, res, next) => {
         }
       });
 
-      const loginUrl = `${config.corsOrigin}/login`;
+      const setupUrl = `${config.corsOrigin}/setup-account?token=${setupToken}`;
       await transporter.sendMail({
         from: config.email.user || 'your-email@gmail.com',
         to: email,
-        subject: '[BUKSU SSC] Admin Account Created',
+        subject: '[BUKSU SSC] Admin Account Setup',
         html: `
           <h2>Welcome to BUKSU SSC Portal!</h2>
-          <p>Dear ${name || 'Admin'},</p>
-          <p>Your admin account has been successfully created.</p>
-          <p><strong>Account Details:</strong></p>
-          <ul>
-            <li><strong>Email:</strong> ${email}</li>
-            <li><strong>Username:</strong> ${username}</li>
-            <li><strong>Password:</strong> ${password}</li>
-            <li><strong>Role:</strong> Admin</li>
-          </ul>
-          <p>You can now log in to the portal using your credentials:</p>
+          <p>Dear Admin,</p>
+          <p>You have been added as an administrator to the BUKSU Supreme Student Council Portal.</p>
+          <p>To complete your account setup, please click the link below to create your username and password:</p>
+          <p><a href="${setupUrl}" style="background-color: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">Complete Account Setup</a></p>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="color: #666; word-break: break-all;">${setupUrl}</p>
+          <p><strong>Note:</strong> This link will expire in 7 days.</p>
           <hr>
           <p style="color: #666; font-size: 12px;">This is an automated email from BUKSU Supreme Student Council Portal.</p>
         `
       });
     } catch (emailError) {
-      console.error('Error sending admin account creation email:', emailError);
+      console.error('Error sending admin account setup email:', emailError);
       // Continue even if email fails
     }
 
-    await logActivity('system_admin', 'admin_create', `Admin account created for ${email}`, {
-      adminEmail: email,
-      adminName: name,
-      adminUsername: username
+    await logActivity('system_admin', 'admin_create', `Admin account invitation sent to ${email}`, {
+      adminEmail: email
     }, req);
 
-    const response = { message: 'Admin created successfully', admin };
+    const response = { message: 'Admin invitation sent successfully. The new admin will receive an email to complete account setup.', admin };
     logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 201, response);
     res.status(201).json(response);
   } catch (error) {
@@ -566,27 +501,35 @@ export const addPresident = async (req, res, next) => {
   }
 };
 
-// Delete user
-export const deleteUser = async (req, res, next) => {
+// Archive user (instead of deleting)
+export const archiveUser = async (req, res, next) => {
   try {
     const { id } = req.params;
     const user = await User.findById(id);
     
     if (!user) {
       const response = { message: 'User not found' };
-      logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 404, response);
+      logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/archive`, 404, response);
       return res.status(404).json(response);
     }
 
-    await User.findByIdAndDelete(id);
+    if (user.archived) {
+      const response = { message: 'User is already archived' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/archive`, 400, response);
+      return res.status(400).json(response);
+    }
 
-    await logActivity('system_admin', 'user_delete', `User deleted: ${user.email}`, { 
-      deletedUserEmail: user.email, 
-      deletedUserName: user.name 
+    user.archived = true;
+    user.archivedAt = new Date();
+    await user.save();
+
+    await logActivity('system_admin', 'user_archive', `User archived: ${user.email}`, { 
+      archivedUserEmail: user.email, 
+      archivedUserName: user.name 
     }, req);
 
-    const response = { message: 'User deleted successfully' };
-    logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 200, response);
+    const response = { message: 'User archived successfully' };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/archive`, 200, response);
     res.json(response);
   } catch (error) {
     next(error);
@@ -621,6 +564,22 @@ export const updateHandbookStatus = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
+    // If approving, reject any existing approved handbook (only one approved at a time)
+    if (status === 'approved') {
+      const existingApproved = await Handbook.findOne({ 
+        status: 'approved', 
+        _id: { $ne: id } 
+      });
+      if (existingApproved) {
+        existingApproved.status = 'rejected';
+        await existingApproved.save();
+        await logActivity('system_admin', 'handbook_reject', `Previous handbook rejected: ${existingApproved.fileName || existingApproved._id}`, { 
+          handbookId: existingApproved._id,
+          fileName: existingApproved.fileName
+        }, req);
+      }
+    }
+
     handbook.status = status;
     await handbook.save();
 
@@ -630,21 +589,21 @@ export const updateHandbookStatus = async (req, res, next) => {
       console.error('Algolia sync (handbook) failed:', algoliaError);
     }
 
-    await logActivity('system_admin', 'handbook_approve', `Handbook page ${handbook.pageNumber} ${status}`, { 
+    await logActivity('system_admin', 'handbook_approve', `Handbook ${status}: ${handbook.fileName || handbook._id}`, { 
       handbookId: id, 
-      pageNumber: handbook.pageNumber, 
+      fileName: handbook.fileName,
       status 
     }, req);
 
     // If approved, send push to all users
     if (status === 'approved') {
       try {
-        await sendPushToAllUsers('New Handbook Published', `Page ${handbook.pageNumber} is now available.`);
+        await sendPushToAllUsers('New Handbook Published', `The student handbook "${handbook.fileName || 'Handbook'}" is now available.`);
       } catch (pushErr) {
         console.error('Push send error (handbook approve):', pushErr);
       }
       try {
-        emitGlobal('handbook:approved', { id: handbook._id, pageNumber: handbook.pageNumber });
+        emitGlobal('handbook:approved', { id: handbook._id, fileName: handbook.fileName });
       } catch (e) {}
     }
     const response = { message: `Handbook ${status} successfully`, handbook };
@@ -667,6 +626,12 @@ export const deleteHandbook = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
+    // Delete file from filesystem if it's a file path (not base64)
+    if (handbook.fileUrl && !handbook.fileUrl.startsWith('data:')) {
+      const { deletePDFFile } = await import('../utils/fileStorage.js');
+      deletePDFFile(handbook.fileUrl);
+    }
+
     await Handbook.findByIdAndDelete(id);
 
     try {
@@ -675,9 +640,9 @@ export const deleteHandbook = async (req, res, next) => {
       console.error('Algolia delete (handbook) failed:', algoliaError);
     }
 
-    await logActivity('system_admin', 'handbook_delete', `Handbook page ${handbook.pageNumber} deleted`, { 
+    await logActivity('system_admin', 'handbook_delete', `Handbook deleted: ${handbook.fileName || handbook._id}`, { 
       handbookId: id, 
-      pageNumber: handbook.pageNumber 
+      fileName: handbook.fileName
     }, req);
 
     const response = { message: 'Handbook deleted successfully' };

@@ -350,7 +350,7 @@ export const clearMemorandumPriority = async (req, res, next) => {
 // Create handbook page
 export const createHandbook = async (req, res, next) => {
   try {
-    const { content, userId } = req.body;
+    const { fileUrl, fileName, userId } = req.body;
 
     if (!userId) {
       const response = { message: 'User ID is required' };
@@ -358,8 +358,8 @@ export const createHandbook = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
-    if (!content) {
-      const response = { message: 'Content is required' };
+    if (!fileUrl) {
+      const response = { message: 'PDF file is required' };
       logAndSetHeader(req, res, 'POST', '/api/president/handbook', 400, response);
       return res.status(400).json(response);
     }
@@ -378,19 +378,49 @@ export const createHandbook = async (req, res, next) => {
       return res.status(403).json(response);
     }
 
-    // Get the next page number (count existing approved/draft handbooks + 1)
-    const existingHandbooksCount = await Handbook.countDocuments();
-    const pageNumber = existingHandbooksCount + 1;
+    // Check if there's already an approved handbook - only allow one approved handbook at a time
+    const existingApproved = await Handbook.findOne({ status: 'approved' });
+    if (existingApproved) {
+      const response = { message: 'An approved handbook already exists. Please archive or reject the existing one first.' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook', 400, response);
+      return res.status(400).json(response);
+    }
 
-    const handbook = new Handbook({ content, pageNumber, createdBy: userId });
+    // Save PDF to filesystem instead of storing in database
+    const { savePDFToFile } = await import('../utils/fileStorage.js');
+    const filePath = savePDFToFile(fileUrl, fileName || 'handbook.pdf');
+
+    // Extract text from PDF for searchability
+    let pdfContent = '';
+    try {
+      pdfContent = await extractTextFromPDF(filePath);
+    } catch (error) {
+      console.error('Failed to extract PDF text:', error);
+      // Continue even if extraction fails
+    }
+
+    const handbook = new Handbook({ 
+      fileUrl: filePath, // Store file path instead of base64
+      fileName: fileName || 'handbook.pdf',
+      pdfContent,
+      createdBy: userId 
+    });
     await handbook.save();
 
-    await logActivity(userId, 'handbook_create', `Handbook page ${pageNumber} created`, { 
-      handbookId: handbook._id, 
-      pageNumber 
+    await logActivity(userId, 'handbook_create', `Handbook created: ${fileName || 'handbook.pdf'}`, { 
+      handbookId: handbook._id,
+      fileName: fileName || 'handbook.pdf'
     }, req);
 
-    const response = { message: 'Handbook draft created', handbook };
+    // Return handbook without large fileUrl to avoid large response payloads
+    const handbookResponse = handbook.toObject();
+    const response = { 
+      message: 'Handbook draft created', 
+      handbook: {
+        ...handbookResponse,
+        fileUrl: handbookResponse.fileUrl // File path is small, safe to include
+      }
+    };
     logAndSetHeader(req, res, 'POST', '/api/president/handbook', 201, response);
     res.status(201).json(response);
   } catch (error) {
@@ -451,10 +481,10 @@ export const setHandbookPriority = async (req, res, next) => {
 export const updateHandbook = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { content, userId, version } = req.body;
+    const { fileUrl, fileName, userId, version } = req.body;
 
-    if (!content) {
-      const response = { message: 'Content is required' };
+    if (!fileUrl) {
+      const response = { message: 'PDF file is required' };
       logAndSetHeader(req, res, 'PUT', `/api/president/handbook/${id}`, 400, response);
       return res.status(400).json(response);
     }
@@ -488,7 +518,27 @@ export const updateHandbook = async (req, res, next) => {
       return res.status(409).json(response);
     }
 
-    handbook.content = content;
+    // Save new PDF to filesystem
+    const { savePDFToFile, deletePDFFile } = await import('../utils/fileStorage.js');
+    const newFilePath = savePDFToFile(fileUrl, fileName || handbook.fileName || 'handbook.pdf');
+    
+    // Delete old file if it exists and is different
+    if (handbook.fileUrl && handbook.fileUrl !== newFilePath && !handbook.fileUrl.startsWith('data:')) {
+      deletePDFFile(handbook.fileUrl);
+    }
+
+    // Extract text from PDF if a new file was uploaded
+    if (newFilePath && newFilePath !== handbook.fileUrl) {
+      try {
+        handbook.pdfContent = await extractTextFromPDF(newFilePath);
+      } catch (error) {
+        console.error('Failed to extract PDF text:', error);
+        // Keep existing content if extraction fails
+      }
+    }
+
+    handbook.fileUrl = newFilePath; // Store file path instead of base64
+    handbook.fileName = fileName || handbook.fileName || 'handbook.pdf';
     handbook.status = 'draft';
     handbook.updatedAt = Date.now();
     handbook.version = handbook.version + 1;

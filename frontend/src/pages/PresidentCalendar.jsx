@@ -131,13 +131,13 @@ const PresidentCalendar = () => {
     }
   }
 
-  const handleDeleteClick = async (eventId, eventTitle) => {
-    if (!window.confirm(`Are you sure you want to delete "${eventTitle || 'this event'}"? This action cannot be undone.`)) {
+  const handleArchiveClick = async (eventId, eventTitle) => {
+    if (!window.confirm(`Are you sure you want to archive "${eventTitle || 'this event'}"?`)) {
       return
     }
     try {
       setError(null)
-      const res = await fetch(`/api/president/calendar/events/${eventId}?userId=${user._id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/president/calendar/events/${eventId}/archive?userId=${user._id}`, { method: 'PUT' })
       logApiResponse(res);
       if (res.ok) {
         fetchEvents()
@@ -151,19 +151,19 @@ const PresidentCalendar = () => {
           if (text.trim()) {
             try {
               const data = JSON.parse(text)
-              setError(data.message || 'Failed to delete event')
+              setError(data.message || 'Failed to archive event')
             } catch (parseError) {
-              setError(`Failed to delete event (${res.status}): Invalid response from server`)
+              setError(`Failed to archive event (${res.status}): Invalid response from server`)
             }
           } else {
-            setError(`Failed to delete event (${res.status}): Empty response from server`)
+            setError(`Failed to archive event (${res.status}): Empty response from server`)
           }
         } else {
-          setError(`Failed to delete event (${res.status}): Server returned an error`)
+          setError(`Failed to archive event (${res.status}): Server returned an error`)
         }
       }
     } catch (e) {
-      setError('Failed to delete event: ' + e.message)
+      setError('Failed to archive event: ' + e.message)
     }
   }
 
@@ -283,10 +283,10 @@ const PresidentCalendar = () => {
                 </div>
                 <div>
                   <button
-                    onClick={() => handleDeleteClick(ev.id, ev.summary)}
-                    className='px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700'
+                    onClick={() => handleArchiveClick(ev.id, ev.summary)}
+                    className='px-3 py-1 rounded bg-orange-600 text-white hover:bg-orange-700'
                   >
-                    Delete
+                    Archive
                   </button>
                 </div>
               </li>

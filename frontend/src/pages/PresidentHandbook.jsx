@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { logApiResponse } from '../utils/fetchWithLogging';
@@ -6,7 +6,7 @@ import { logApiResponse } from '../utils/fetchWithLogging';
 const PresidentHandbook = () => {
   const { logout, user } = useAuth();
   const navigate = useNavigate();
-  const [content, setContent] = useState('');
+  const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
@@ -14,10 +14,11 @@ const PresidentHandbook = () => {
   const [handbooks, setHandbooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingHandbook, setEditingHandbook] = useState(null);
-  const [editContent, setEditContent] = useState('');
+  const [editFile, setEditFile] = useState(null);
   const [editVersion, setEditVersion] = useState(1);
   const [hasPriority, setHasPriority] = useState(false);
   const [priorityError, setPriorityError] = useState('');
+  const fileInputRef = useRef(null);
 
   const isAuthorized = !!user && user.role === 'president';
 
@@ -40,11 +41,34 @@ const PresidentHandbook = () => {
     }
   };
 
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (editingHandbook) {
+      setEditFile(selectedFile);
+    } else {
+      setFile(selectedFile);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!content) {
-      setMessage('Please fill in the content field.');
+    if (!file) {
+      setMessage('Please select a PDF file to upload.');
+      setMessageType('error');
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      setMessage('Please upload a PDF file.');
+      setMessageType('error');
+      return;
+    }
+
+    // Check file size (limit to 100MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB in bytes
+    if (file.size > maxSize) {
+      setMessage('File size is too large. Please upload a file smaller than 100MB.');
       setMessageType('error');
       return;
     }
@@ -52,33 +76,62 @@ const PresidentHandbook = () => {
     try {
       setSubmitting(true);
       
-      const response = await fetch('/api/president/handbook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          userId: user._id
-        })
-      });
-
-      logApiResponse(response);
-      const data = await response.json();
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
       
-      if (response.ok) {
-        setMessage('Handbook page created successfully! Waiting for admin approval.');
-        setMessageType('success');
-        setContent('');
-        setShowModal(false);
-        fetchHandbooks(); // Refresh the list
-      } else {
-        setMessage(data.message || 'Failed to create handbook page. Please try again.');
+      reader.onload = async () => {
+        try {
+          const base64File = reader.result;
+          
+          if (!base64File) {
+            throw new Error('Failed to read file');
+          }
+          
+          const response = await fetch('/api/president/handbook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileUrl: base64File,
+              fileName: file.name || '',
+              userId: user._id
+            })
+          });
+
+          logApiResponse(response);
+          const data = await response.json();
+          
+          if (response.ok) {
+            setMessage('Handbook page created successfully! Waiting for admin approval.');
+            setMessageType('success');
+            setFile(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            setShowModal(false);
+            fetchHandbooks(); // Refresh the list
+          } else {
+            setMessage(data.message || 'Failed to create handbook page. Please try again.');
+            setMessageType('error');
+          }
+        } catch (error) {
+          console.error('Error creating handbook page:', error);
+          setMessage('Error creating handbook page. Please try again.');
+          setMessageType('error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setMessage('Error reading file. Please try again.');
         setMessageType('error');
-      }
+        setSubmitting(false);
+      };
     } catch (error) {
       console.error('Error creating handbook page:', error);
       setMessage('Error creating handbook page. Please try again.');
       setMessageType('error');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -100,10 +153,10 @@ const PresidentHandbook = () => {
         setHasPriority(true);
         setPriorityError('');
         setEditingHandbook(handbook);
-        setEditContent(handbook.content);
+        setEditFile(null);
         setEditVersion(handbook.version || 1);
         setShowModal(true);
-        setContent('');
+        setFile(null);
         setMessage('');
         setMessageType('');
       } else {
@@ -111,10 +164,10 @@ const PresidentHandbook = () => {
         setHasPriority(false);
         setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
         setEditingHandbook(handbook);
-        setEditContent(handbook.content);
+        setEditFile(null);
         setEditVersion(handbook.version || 1);
         setShowModal(true);
-        setContent('');
+        setFile(null);
         setMessage('');
         setMessageType('');
       }
@@ -127,8 +180,23 @@ const PresidentHandbook = () => {
   const handleUpdate = async (e) => {
     e.preventDefault();
     
-    if (!editContent) {
-      setMessage('Please fill in the content field.');
+    // If no new file is selected, use the existing file
+    if (!editFile) {
+      setMessage('Please select a PDF file to upload.');
+      setMessageType('error');
+      return;
+    }
+
+    if (editFile.type !== 'application/pdf') {
+      setMessage('Please upload a PDF file.');
+      setMessageType('error');
+      return;
+    }
+
+    // Check file size (limit to 100MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB in bytes
+    if (editFile.size > maxSize) {
+      setMessage('File size is too large. Please upload a file smaller than 100MB.');
       setMessageType('error');
       return;
     }
@@ -136,35 +204,64 @@ const PresidentHandbook = () => {
     try {
       setSubmitting(true);
       
-      const response = await fetch(`/api/president/handbook/${editingHandbook._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: editContent,
-          userId: user._id,
-          version: editVersion
-        })
-      });
-
-      logApiResponse(response);
-      const data = await response.json();
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.readAsDataURL(editFile);
       
-      if (response.ok) {
-        setMessage('Handbook page updated successfully! Waiting for admin approval.');
-        setMessageType('success');
-        setEditingHandbook(null);
-        setEditContent('');
-        setShowModal(false);
-        fetchHandbooks(); // Refresh the list
-      } else {
-        setMessage(data.message || 'Failed to update handbook page. Please try again.');
+      reader.onload = async () => {
+        try {
+          const base64File = reader.result;
+          
+          if (!base64File) {
+            throw new Error('Failed to read file');
+          }
+          
+          const response = await fetch(`/api/president/handbook/${editingHandbook._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileUrl: base64File,
+              fileName: editFile.name || '',
+              userId: user._id,
+              version: editVersion
+            })
+          });
+
+          logApiResponse(response);
+          const data = await response.json();
+          
+          if (response.ok) {
+            setMessage('Handbook page updated successfully! Waiting for admin approval.');
+            setMessageType('success');
+            setEditingHandbook(null);
+            setEditFile(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            setShowModal(false);
+            fetchHandbooks(); // Refresh the list
+          } else {
+            setMessage(data.message || 'Failed to update handbook page. Please try again.');
+            setMessageType('error');
+          }
+        } catch (error) {
+          console.error('Error updating handbook page:', error);
+          setMessage('Error updating handbook page. Please try again.');
+          setMessageType('error');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      reader.onerror = () => {
+        setMessage('Error reading file. Please try again.');
         setMessageType('error');
-      }
+        setSubmitting(false);
+      };
     } catch (error) {
       console.error('Error updating handbook page:', error);
       setMessage('Error updating handbook page. Please try again.');
       setMessageType('error');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -186,13 +283,16 @@ const PresidentHandbook = () => {
 
     setShowModal(false);
     setEditingHandbook(null);
-    setContent('');
-    setEditContent('');
+    setFile(null);
+    setEditFile(null);
     setEditVersion(1);
     setHasPriority(false);
     setPriorityError('');
     setMessage('');
     setMessageType('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleLogout = () => {
@@ -260,7 +360,7 @@ const PresidentHandbook = () => {
           ) : (
           <>
           <div className='flex justify-between items-center mb-8'>
-            <h1 className='text-3xl font-bold text-blue-950'>Handbook Pages</h1>
+            <h1 className='text-3xl font-bold text-blue-950'>Student Handbook</h1>
             <div className='flex items-center space-x-4'>
               <button 
                 onClick={() => { setLoading(true); fetchHandbooks(); }} 
@@ -299,14 +399,14 @@ const PresidentHandbook = () => {
                     <div key={handbook._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === handbooks.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
                       <div className='flex-1 px-6 py-4'>
                         <div className='flex items-center space-x-2'>
-                          <p className='text-gray-800 font-medium'>Page {handbook.pageNumber || 'N/A'}</p>
+                          <p className='text-gray-800 font-medium'>{handbook.fileName || 'Handbook PDF'}</p>
                           {handbook.editedBy && (
                             <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
                               Edited
                             </span>
                           )}
                         </div>
-                        <p className='text-sm text-gray-500 mt-1 truncate'>{handbook.content.substring(0, 100)}...</p>
+                        <p className='text-sm text-gray-500 mt-1'>Full Student Handbook</p>
                         <p className='text-xs text-gray-400 mt-1'>Created by: {handbook.createdBy ? handbook.createdBy.name : 'Unknown'}</p>
                         {handbook.editedBy && (
                           <p className='text-xs text-gray-400 mt-1'>
@@ -342,7 +442,7 @@ const PresidentHandbook = () => {
                 })}
               </div>
             ) : (
-              <div className='text-center py-12 text-gray-500'>No handbook pages yet. Click "Create Handbook" to add one.</div>
+              <div className='text-center py-12 text-gray-500'>No handbook yet. Click "Create Handbook" to upload the full student handbook.</div>
             )}
           </div>
           </>
@@ -355,7 +455,7 @@ const PresidentHandbook = () => {
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
           <div className='bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto'>
             <h2 className='text-2xl font-bold mb-6 text-blue-950'>
-              {editingHandbook ? 'Edit Handbook Page' : 'Create Handbook Page'}
+              {editingHandbook ? 'Edit Handbook' : 'Create Handbook'}
             </h2>
 
             {priorityError && (
@@ -374,23 +474,29 @@ const PresidentHandbook = () => {
               {editingHandbook && (
                 <div className='mb-4 p-3 bg-blue-50 rounded-lg'>
                   <p className='text-sm text-blue-800'>
-                    <strong>Page Number:</strong> {editingHandbook.pageNumber || 'N/A'}
+                    <strong>Current File:</strong> {editingHandbook.fileName || 'handbook.pdf'}
                   </p>
                 </div>
               )}
 
               <div className='mb-6'>
                 <label className='block text-sm font-semibold text-gray-700 mb-2'>
-                  Content
+                  PDF File
                 </label>
-                <textarea
-                  value={editingHandbook ? editContent : content}
-                  onChange={(e) => editingHandbook ? setEditContent(e.target.value) : setContent(e.target.value)}
+                {editingHandbook && editingHandbook.fileName && !editFile && (
+                  <div className='mb-3 p-3 bg-gray-50 rounded-lg'>
+                    <p className='text-sm text-gray-600'>Current file: <span className='font-medium'>{editingHandbook.fileName}</span></p>
+                  </div>
+                )}
+                <input
+                  type='file'
+                  accept='application/pdf'
+                  onChange={handleFileChange}
+                  ref={fileInputRef}
                   className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 text-black'
-                  placeholder='Enter handbook page content'
-                  rows='12'
-                  required
+                  required={!editingHandbook || !editingHandbook.fileUrl}
                 />
+                <p className='text-xs text-gray-500 mt-2'>Please upload a PDF file (max 100MB)</p>
               </div>
 
               {message && (
@@ -413,7 +519,7 @@ const PresidentHandbook = () => {
                 >
                   {submitting ? (editingHandbook ? 'Updating...' : 'Creating...') : 
                    editingHandbook && !hasPriority ? 'No Save Priority' :
-                   editingHandbook ? 'Update Handbook Page' : 'Create Handbook Page'}
+                   editingHandbook ? 'Update Handbook' : 'Create Handbook'}
                 </button>
                 <button
                   type='button'

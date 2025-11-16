@@ -13,6 +13,10 @@ const userSchema = new mongoose.Schema({
   profileCompleted: { type: Boolean, default: false },
   resetToken: String,
   resetTokenExpiry: Date,
+  setupToken: String,
+  setupTokenExpiry: Date,
+  archived: { type: Boolean, default: false },
+  archivedAt: Date,
   fcmTokens: { type: [String], default: [] },
   // Google Calendar OAuth tokens (only for president role)
   googleCalendar: {

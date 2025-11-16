@@ -633,6 +633,64 @@ export const resetPassword = async (req, res, next) => {
   }
 };
 
+// Setup admin account (create username and password)
+export const setupAccount = async (req, res, next) => {
+  try {
+    const { token, username, password, name } = req.body;
+
+    if (!token || !username || !password) {
+      const response = { message: 'Token, username, and password are required' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/setup-account', 400, response);
+      return res.status(400).json(response);
+    }
+
+    if (password.length < 6) {
+      const response = { message: 'Password must be at least 6 characters long' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/setup-account', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const user = await User.findOne({ 
+      setupToken: token,
+      setupTokenExpiry: { $gt: new Date() }
+    });
+
+    if (!user) {
+      const response = { message: 'Invalid or expired setup token' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/setup-account', 400, response);
+      return res.status(400).json(response);
+    }
+
+    // Check if username is already taken
+    const existingUsername = await User.findOne({ 
+      username,
+      _id: { $ne: user._id }
+    });
+
+    if (existingUsername) {
+      const response = { message: 'Username is already taken' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/setup-account', 400, response);
+      return res.status(400).json(response);
+    }
+
+    // Update user with username, password, and name
+    user.username = username;
+    user.password = password;
+    if (name) {
+      user.name = name;
+    }
+    user.setupToken = null;
+    user.setupTokenExpiry = null;
+    await user.save();
+
+    const response = { message: 'Account setup completed successfully. You can now log in.' };
+    logAndSetHeader(req, res, 'POST', '/api/auth/setup-account', 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Register/update FCM token for a user
 export const registerFcmToken = async (req, res, next) => {
   try {
