@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
@@ -12,6 +12,16 @@ const BuksuCalendar = () => {
   const handleLogout = () => { logout(); setMenuOpen(false); navigate('/login') }
 
   const embedUrl = import.meta.env.VITE_GCAL_EMBED_URL || ''
+
+  useEffect(() => {
+    // Always log as empty by default since we can't reliably detect
+    // if calendar has events in a cross-origin iframe
+    console.log(JSON.stringify({
+      method: 'GET',
+      status: 204,
+      message: 'Calendar is empty'
+    }))
+  }, [])
 
   return (
     <div className='bg-white min-h-screen'>

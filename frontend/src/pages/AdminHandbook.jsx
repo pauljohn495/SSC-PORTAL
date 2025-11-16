@@ -19,6 +19,18 @@ const AdminHandbook = () => {
   const fetchDrafts = async () => {
     try {
       const response = await fetch('http://localhost:5001/api/admin/handbook');
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       const data = await response.json();
       setDrafts(data);
     } catch (error) {
@@ -35,6 +47,18 @@ const AdminHandbook = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'approved' })
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       if (response.ok) {
         fetchDrafts(); // Refresh list
       }
@@ -50,6 +74,18 @@ const AdminHandbook = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'rejected' })
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       if (response.ok) {
         fetchDrafts(); // Refresh list
       }
@@ -66,6 +102,18 @@ const AdminHandbook = () => {
       const response = await fetch(`http://localhost:5001/api/admin/handbook/${id}`, {
         method: 'DELETE'
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       if (response.ok) {
         fetchDrafts(); // Refresh list
       }

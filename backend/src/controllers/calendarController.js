@@ -14,19 +14,75 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
     content = responseData.url;
   } else if (Array.isArray(responseData)) {
     content = responseData;
+  } else if (responseData && typeof responseData === 'object') {
+    // For event objects, exclude large fields if needed
+    const { htmlLink, iCalUID, ...eventWithoutLargeFields } = responseData;
+    content = eventWithoutLargeFields;
   }
   
-  // Create simplified log data (without full response object)
+  // Create simplified log data (without content)
   const logData = {
     method,
     endpoint,
     status,
-    message: responseData?.message || null,
-    content
+    message: responseData?.message || null
   };
   
   // Set custom header for browser console logging only (no server console log)
-  res.setHeader('X-API-Log', JSON.stringify(logData));
+  // Sanitize header value to remove invalid characters (newlines, carriage returns, control chars, etc.)
+  try {
+    // Safely stringify, handling circular references and other edge cases
+    let headerValue;
+    try {
+      headerValue = JSON.stringify(logData);
+    } catch (stringifyError) {
+      // If stringify fails, create a simplified version
+      headerValue = JSON.stringify({
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || 'Response data could not be serialized'
+      });
+    }
+    
+    // Remove all invalid characters for HTTP headers:
+    // - Control characters (0x00-0x1F except HTAB 0x09)
+    // - DEL (0x7F)
+    // - Newlines, carriage returns, form feeds, etc.
+    headerValue = headerValue.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+    
+    // Replace tabs, newlines, and carriage returns with spaces
+    headerValue = headerValue.replace(/[\r\n\t]/g, ' ');
+    
+    // Replace multiple spaces with single space
+    headerValue = headerValue.replace(/\s+/g, ' ');
+    
+    // Trim the value
+    headerValue = headerValue.trim();
+    
+    if (headerValue.length > 8000) {
+      // If too large, simplify further (shouldn't happen without content, but just in case)
+      const simplifiedLogData = {
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || null
+      };
+      headerValue = JSON.stringify(simplifiedLogData)
+        .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // Only set header if value is valid and not empty
+    if (headerValue && headerValue.length > 0) {
+      res.setHeader('X-API-Log', headerValue);
+    }
+  } catch (error) {
+    // If header setting fails, just skip it (don't break the response)
+    console.error('Failed to set X-API-Log header:', error);
+  }
   
   return logData;
 };
@@ -139,7 +195,11 @@ export const listEvents = async (req, res) => {
     })
     const events = calendarResponse.data.items || []
     const response = events
-    logAndSetHeader(req, res, 'GET', '/api/president/calendar/events', 200, { events: response, count: response.length })
+    logAndSetHeader(req, res, 'GET', '/api/president/calendar/events', 200, { 
+      message: `Fetched ${events.length} calendar event${events.length !== 1 ? 's' : ''}`,
+      events: response, 
+      count: response.length 
+    })
     res.json(response)
   } catch (e) {
     const status = e.message === 'User not found' ? 404 : e.message === 'Forbidden' ? 403 : 400
@@ -173,7 +233,10 @@ export const createEvent = async (req, res) => {
       }
     }
     const calendarResponse = await calendar.events.insert({ calendarId, requestBody: event })
-    const response = calendarResponse.data
+    const response = { 
+      ...calendarResponse.data,
+      message: 'Calendar event created successfully'
+    }
     logAndSetHeader(req, res, 'POST', '/api/president/calendar/events', 200, response)
     res.json(response)
   } catch (e) {

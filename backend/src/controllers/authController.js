@@ -4,6 +4,93 @@ import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import mongoose from 'mongoose';
 
+// Helper function to create simplified log and set response header
+const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
+  // Determine message based on response data and endpoint
+  let message = null;
+  
+  // If response has a message property, use it
+  if (responseData?.message) {
+    message = responseData.message;
+  } else if (responseData?.user) {
+    // For login responses with user object
+    if (endpoint.includes('/auth/google')) {
+      message = 'Google OAuth login successful';
+    } else if (endpoint.includes('/auth/admin')) {
+      message = 'Admin login successful';
+    } else if (endpoint.includes('/auth/profile')) {
+      message = 'Profile updated successfully';
+    } else {
+      message = 'Request successful';
+    }
+  } else if (responseData && typeof responseData === 'object') {
+    // For object responses without message, create a generic success message
+    if (status >= 200 && status < 300) {
+      message = 'Request successful';
+    }
+  }
+  
+  // Create simplified log data (only method, endpoint, status, message - no content)
+  const logData = {
+    method,
+    endpoint,
+    status,
+    message
+  };
+  
+  try {
+    // Safely stringify, handling circular references and other edge cases
+    let headerValue;
+    try {
+      headerValue = JSON.stringify(logData);
+    } catch (stringifyError) {
+      // If stringify fails, create a simplified version
+      headerValue = JSON.stringify({
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || 'Response data could not be serialized'
+      });
+    }
+    
+    headerValue = headerValue.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+    
+    // Replace tabs, newlines, and carriage returns with spaces
+    headerValue = headerValue.replace(/[\r\n\t]/g, ' ');
+    
+    // Replace multiple spaces with single space
+    headerValue = headerValue.replace(/\s+/g, ' ');
+    
+    // Trim the value
+    headerValue = headerValue.trim();
+    
+    if (headerValue.length > 8000) {
+      // If too large, simplify further (shouldn't happen without content, but just in case)
+      const simplifiedLogData = {
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || null
+      };
+      headerValue = JSON.stringify(simplifiedLogData)
+        .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // Only set header if value is valid and not empty
+    if (headerValue && headerValue.length > 0) {
+      res.setHeader('X-API-Log', headerValue);
+    }
+  } catch (error) {
+    // If header setting fails, just skip it (don't break the response)
+    // Silently fail - browser will handle missing header gracefully
+  }
+  
+  return logData;
+};
+
 const ensureProfileCompletedFlag = (user) => {
   if (user && user.department && user.course && !user.profileCompleted) {
     user.profileCompleted = true;
@@ -75,7 +162,9 @@ export const googleAuth = async (req, res, next) => {
       if (!isValidRecaptcha) {
         // In development mode, allow login even if reCAPTCHA fails
         if (config.nodeEnv !== 'development') {
-          return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+          const response = { message: 'reCAPTCHA verification failed' };
+          logAndSetHeader(req, res, 'POST', '/api/auth/google', 401, response);
+          return res.status(401).json(response);
         }
       }
     }
@@ -91,9 +180,11 @@ export const googleAuth = async (req, res, next) => {
       // Presidents can have any email, but for new users we only allow @student.buksu.edu.ph
       // (Presidents should be created by admin first)
       if (!isStudentEmail) {
-        return res.status(403).json({ 
+        const response = { 
           message: 'Only @student.buksu.edu.ph email addresses are allowed for student accounts. If you are a president, please contact the administrator to set up your account.' 
-        });
+        };
+        logAndSetHeader(req, res, 'POST', '/api/auth/google', 403, response);
+        return res.status(403).json(response);
       }
       
       user = new User({ email, name, picture, googleId, role: 'student' });
@@ -118,15 +209,19 @@ export const googleAuth = async (req, res, next) => {
         await user.save();
       } else if (user.role === 'admin') {
         // Admins use manual login, not Google OAuth
-        return res.status(403).json({ 
+        const response = { 
           message: 'Admin accounts must use the admin login form, not Google login.' 
-        });
+        };
+        logAndSetHeader(req, res, 'POST', '/api/auth/google', 403, response);
+        return res.status(403).json(response);
       } else {
         // Student or no role - must have @student.buksu.edu.ph email
         if (!isStudentEmail) {
-          return res.status(403).json({ 
+          const response = { 
             message: 'Only @student.buksu.edu.ph email addresses are allowed for student accounts.' 
-          });
+          };
+          logAndSetHeader(req, res, 'POST', '/api/auth/google', 403, response);
+          return res.status(403).json(response);
         }
         
         // Update user info if missing or changed
@@ -155,7 +250,9 @@ export const googleAuth = async (req, res, next) => {
     }, req);
 
     // Return user object with all necessary fields
-    res.json({ user: buildUserResponse(user) });
+    const response = { user: buildUserResponse(user) };
+    logAndSetHeader(req, res, 'POST', '/api/auth/google', 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -166,7 +263,9 @@ export const adminLogin = async (req, res, next) => {
   try {
     // Check database connection first
     if (mongoose.connection.readyState !== 1) {
-      return res.status(503).json({ message: 'Database connection unavailable. Please try again.' });
+      const response = { message: 'Database connection unavailable. Please try again.' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/admin', 503, response);
+      return res.status(503).json(response);
     }
     
     const { email, password, username, recaptchaToken } = req.body;
@@ -177,7 +276,9 @@ export const adminLogin = async (req, res, next) => {
       if (!isValidRecaptcha) {
         // In development mode, allow login even if reCAPTCHA fails
         if (config.nodeEnv !== 'development') {
-          return res.status(401).json({ message: 'reCAPTCHA verification failed' });
+          const response = { message: 'reCAPTCHA verification failed' };
+          logAndSetHeader(req, res, 'POST', '/api/auth/admin', 401, response);
+          return res.status(401).json(response);
         }
       }
     }
@@ -189,21 +290,29 @@ export const adminLogin = async (req, res, next) => {
     } else if (username) {
       user = await User.findOne({ username, role: 'admin' });
     } else {
-      return res.status(400).json({ message: 'Email or username is required' });
+      const response = { message: 'Email or username is required' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/admin', 400, response);
+      return res.status(400).json(response);
     }
     
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      const response = { message: 'Invalid credentials' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/admin', 401, response);
+      return res.status(401).json(response);
     }
 
     // Check if user has a password set
     if (!user.password) {
-      return res.status(401).json({ message: 'Account does not have a password set. Please contact administrator.' });
+      const response = { message: 'Account does not have a password set. Please contact administrator.' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/admin', 401, response);
+      return res.status(401).json(response);
     }
 
     // Check password
     if (user.password !== password) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      const response = { message: 'Invalid credentials' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/admin', 401, response);
+      return res.status(401).json(response);
     }
 
     await logActivity(user._id, 'admin_login', `Admin logged in manually`, { 
@@ -212,7 +321,9 @@ export const adminLogin = async (req, res, next) => {
     }, req);
 
     // Return user object with all necessary fields
-    res.json({ user: buildUserResponse(user) });
+    const response = { user: buildUserResponse(user) };
+    logAndSetHeader(req, res, 'POST', '/api/auth/admin', 200, response);
+    res.json(response);
   } catch (error) {
     console.error('Admin login error:', error);
     next(error);
@@ -225,7 +336,9 @@ export const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ message: 'Email is required' });
+      const response = { message: 'Email is required' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 400, response);
+      return res.status(400).json(response);
     }
 
     // Check if email configuration is set
@@ -233,10 +346,12 @@ export const forgotPassword = async (req, res, next) => {
         config.email.user === 'your-email@gmail.com' || 
         config.email.pass === 'your-app-password') {
       console.error('Email configuration is not set. Please configure EMAIL_USER and EMAIL_PASS in .env file');
-      return res.status(500).json({ 
+      const response = { 
         message: 'Email service is not configured. Please contact the administrator.',
         error: 'EMAIL_CONFIG_MISSING'
-      });
+      };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 500, response);
+      return res.status(500).json(response);
     }
 
     // Log email config (without password) for debugging
@@ -249,12 +364,16 @@ export const forgotPassword = async (req, res, next) => {
     const user = await User.findOne({ email });
     if (!user) {
       // Security: Don't reveal if email exists
-      return res.json({ message: 'If that email exists in our system, a password reset link has been sent.' });
+      const response = { message: 'If that email exists in our system, a password reset link has been sent.' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 200, response);
+      return res.json(response);
     }
 
     if (user.role !== 'admin') {
       // Security: Don't reveal if email exists or role
-      return res.json({ message: 'If that email exists in our system, a password reset link has been sent.' });
+      const response = { message: 'If that email exists in our system, a password reset link has been sent.' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 200, response);
+      return res.json(response);
     }
 
     const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -289,7 +408,7 @@ export const forgotPassword = async (req, res, next) => {
         responseCode: transporterError.responseCode,
         stack: transporterError.stack
       });
-      return res.status(500).json({ 
+      const response = { 
         message: 'Email service configuration error. Please contact the administrator.',
         error: 'EMAIL_TRANSPORTER_ERROR',
         details: config.nodeEnv === 'development' ? {
@@ -297,7 +416,9 @@ export const forgotPassword = async (req, res, next) => {
           code: transporterError.code,
           response: transporterError.response
         } : undefined
-      });
+      };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 500, response);
+      return res.status(500).json(response);
     }
 
     const resetUrl = `${config.corsOrigin}/reset-password?token=${resetToken}`;
@@ -342,10 +463,12 @@ export const forgotPassword = async (req, res, next) => {
         console.log('Reset token (for testing):', resetToken);
       }
       
-      res.json({ 
+      const response = { 
         message: 'Password reset email has been sent to your email address. Please check your inbox and spam folder.',
         success: true
-      });
+      };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 200, response);
+      res.json(response);
     } catch (emailError) {
       console.error('✗ Error sending password reset email:', {
         error: emailError.message,
@@ -369,7 +492,7 @@ export const forgotPassword = async (req, res, next) => {
         errorMessage = 'Email address not found or access denied.';
       }
 
-      return res.status(500).json({ 
+      const response = { 
         message: errorMessage,
         error: 'EMAIL_SEND_ERROR',
         details: config.nodeEnv === 'development' ? {
@@ -378,7 +501,9 @@ export const forgotPassword = async (req, res, next) => {
           response: emailError.response,
           responseCode: emailError.responseCode
         } : undefined
-      });
+      };
+      logAndSetHeader(req, res, 'POST', '/api/auth/forgot-password', 500, response);
+      return res.status(500).json(response);
     }
   } catch (error) {
     console.error('Unexpected error in forgotPassword:', error);
@@ -479,7 +604,9 @@ export const resetPassword = async (req, res, next) => {
     const { token, newPassword } = req.body;
 
     if (!token || !newPassword) {
-      return res.status(400).json({ message: 'Token and new password are required' });
+      const response = { message: 'Token and new password are required' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/reset-password', 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findOne({ 
@@ -488,7 +615,9 @@ export const resetPassword = async (req, res, next) => {
     });
 
     if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired reset token' });
+      const response = { message: 'Invalid or expired reset token' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/reset-password', 400, response);
+      return res.status(400).json(response);
     }
 
     user.password = newPassword;
@@ -496,7 +625,9 @@ export const resetPassword = async (req, res, next) => {
     user.resetTokenExpiry = null;
     await user.save();
 
-    res.json({ message: 'Password has been reset successfully' });
+    const response = { message: 'Password has been reset successfully' };
+    logAndSetHeader(req, res, 'POST', '/api/auth/reset-password', 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -507,12 +638,16 @@ export const registerFcmToken = async (req, res, next) => {
   try {
     const { userId, fcmToken } = req.body;
     if (!userId || !fcmToken) {
-      return res.status(400).json({ message: 'userId and fcmToken are required' });
+      const response = { message: 'userId and fcmToken are required' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 404, response);
+      return res.status(404).json(response);
     }
 
     if (!user.fcmTokens) user.fcmTokens = [];
@@ -521,7 +656,9 @@ export const registerFcmToken = async (req, res, next) => {
       await user.save();
     }
 
-    res.json({ message: 'FCM token registered' });
+    const response = { message: 'FCM token registered' };
+    logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -533,12 +670,16 @@ export const updateProfile = async (req, res, next) => {
     const { department, course } = req.body;
 
     if (!department || !course) {
-      return res.status(400).json({ message: 'Department and course are required' });
+      const response = { message: 'Department and course are required' };
+      logAndSetHeader(req, res, 'PUT', `/api/auth/profile/${id}`, 400, response);
+      return res.status(400).json(response);
     }
 
     const user = await User.findById(id);
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/auth/profile/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     user.department = department;
@@ -555,7 +696,9 @@ export const updateProfile = async (req, res, next) => {
       req
     );
 
-    res.json({ user: buildUserResponse(user) });
+    const response = { user: buildUserResponse(user) };
+    logAndSetHeader(req, res, 'PUT', `/api/auth/profile/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }

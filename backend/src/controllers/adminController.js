@@ -9,10 +9,101 @@ import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 
+// Helper function to create simplified log and set response header
+const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
+  // Determine message based on response data and endpoint
+  let message = null;
+  
+  // If response has a message property, use it
+  if (responseData?.message) {
+    message = responseData.message;
+  } else if (Array.isArray(responseData)) {
+    // For array responses, create a meaningful message based on endpoint
+    const count = responseData.length;
+    if (endpoint.includes('/admin/users')) {
+      message = `Successfully retrieved ${count} user${count !== 1 ? 's' : ''}`;
+    } else if (endpoint.includes('/admin/handbook')) {
+      message = `Successfully retrieved ${count} handbook${count !== 1 ? 's' : ''}`;
+    } else if (endpoint.includes('/admin/memorandums')) {
+      message = `Successfully retrieved ${count} memorandum${count !== 1 ? 's' : ''}`;
+    } else if (endpoint.includes('/admin/activity-logs')) {
+      message = `Successfully retrieved ${count} activity log${count !== 1 ? 's' : ''}`;
+    } else {
+      message = `Successfully retrieved ${count} item${count !== 1 ? 's' : ''}`;
+    }
+  } else if (responseData && typeof responseData === 'object') {
+    // For object responses without message, create a generic success message
+    if (status >= 200 && status < 300) {
+      message = 'Request successful';
+    }
+  }
+  
+  // Create simplified log data (only method, endpoint, status, message - no content)
+  const logData = {
+    method,
+    endpoint,
+    status,
+    message
+  };
+  
+  try {
+    // Safely stringify, handling circular references and other edge cases
+    let headerValue;
+    try {
+      headerValue = JSON.stringify(logData);
+    } catch (stringifyError) {
+      // If stringify fails, create a simplified version
+      headerValue = JSON.stringify({
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || 'Response data could not be serialized'
+      });
+    }
+    
+    headerValue = headerValue.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+    
+    // Replace tabs, newlines, and carriage returns with spaces
+    headerValue = headerValue.replace(/[\r\n\t]/g, ' ');
+    
+    // Replace multiple spaces with single space
+    headerValue = headerValue.replace(/\s+/g, ' ');
+    
+    // Trim the value
+    headerValue = headerValue.trim();
+    
+    if (headerValue.length > 8000) {
+      // If too large, simplify further (shouldn't happen without content, but just in case)
+      const simplifiedLogData = {
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || null
+      };
+      headerValue = JSON.stringify(simplifiedLogData)
+        .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // Only set header if value is valid and not empty
+    if (headerValue && headerValue.length > 0) {
+      res.setHeader('X-API-Log', headerValue);
+    }
+  } catch (error) {
+    // If header setting fails, just skip it (don't break the response)
+    // Silently fail - browser will handle missing header gracefully
+  }
+  
+  return logData;
+};
+
 // Get all users
 export const getUsers = async (req, res, next) => {
   try {
     const users = await User.find().sort({ createdAt: -1 });
+    logAndSetHeader(req, res, 'GET', '/api/admin/users', 200, users);
     res.json(users);
   } catch (error) {
     next(error);
@@ -78,7 +169,9 @@ export const addAdmin = async (req, res, next) => {
           adminUsername: username
         }, req);
 
-        return res.status(200).json({ message: 'Admin account updated successfully', admin: existingUser });
+        const response = { message: 'Admin account updated successfully', admin: existingUser };
+        logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 200, response);
+        return res.status(200).json(response);
       }
       // If it's a student, we can update them to admin
       existingUser.role = 'admin';
@@ -128,7 +221,9 @@ export const addAdmin = async (req, res, next) => {
         adminUsername: username
       }, req);
 
-      return res.status(200).json({ message: 'User upgraded to admin successfully', admin: existingUser });
+      const response = { message: 'User upgraded to admin successfully', admin: existingUser };
+      logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 200, response);
+      return res.status(200).json(response);
     }
 
     const admin = new User({ email, password, name, username, role: 'admin' });
@@ -176,7 +271,9 @@ export const addAdmin = async (req, res, next) => {
       adminUsername: username
     }, req);
 
-    res.status(201).json({ message: 'Admin created successfully', admin });
+    const response = { message: 'Admin created successfully', admin };
+    logAndSetHeader(req, res, 'POST', '/api/admin/add-admin', 201, response);
+    res.status(201).json(response);
   } catch (error) {
     next(error);
   }
@@ -236,7 +333,9 @@ export const addPresident = async (req, res, next) => {
           presidentEmail: email
         }, req);
 
-        return res.status(200).json({ message: 'User role updated to president', user });
+        const response = { message: 'User role updated to president', user };
+        logAndSetHeader(req, res, 'POST', '/api/admin/add-president', 200, response);
+        return res.status(200).json(response);
       } else {
         // Create new user with just email (they'll need to set password later or use Google OAuth)
         const president = new User({ email, role: 'president' });
@@ -281,10 +380,12 @@ export const addPresident = async (req, res, next) => {
           presidentEmail: email
         }, req);
 
-        return res.status(201).json({ 
+        const response = { 
           message: 'President email added. They can log in via Google Authentication', 
           user: president 
-        });
+        };
+        logAndSetHeader(req, res, 'POST', '/api/admin/add-president', 201, response);
+        return res.status(201).json(response);
       }
     }
 
@@ -346,7 +447,9 @@ export const addPresident = async (req, res, next) => {
           presidentUsername: username
         }, req);
 
-        return res.status(200).json({ message: 'President account updated successfully', user: existingUser });
+        const response = { message: 'President account updated successfully', user: existingUser };
+        logAndSetHeader(req, res, 'POST', '/api/admin/add-president', 200, response);
+        return res.status(200).json(response);
       }
       // If it's a student, we can update them to president
       existingUser.role = 'president';
@@ -400,7 +503,9 @@ export const addPresident = async (req, res, next) => {
         presidentUsername: username
       }, req);
 
-      return res.status(200).json({ message: 'User upgraded to president successfully', user: existingUser });
+      const response = { message: 'User upgraded to president successfully', user: existingUser };
+      logAndSetHeader(req, res, 'POST', '/api/admin/add-president', 200, response);
+      return res.status(200).json(response);
     }
 
     const president = new User({ email, password, name, username, role: 'president' });
@@ -452,7 +557,9 @@ export const addPresident = async (req, res, next) => {
       presidentUsername: username
     }, req);
 
-    res.status(201).json({ message: 'President created successfully', user: president });
+    const response = { message: 'President created successfully', user: president };
+    logAndSetHeader(req, res, 'POST', '/api/admin/add-president', 201, response);
+    res.status(201).json(response);
   } catch (error) {
     console.error('Error adding president:', error);
     next(error);
@@ -466,7 +573,9 @@ export const deleteUser = async (req, res, next) => {
     const user = await User.findById(id);
     
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     await User.findByIdAndDelete(id);
@@ -476,7 +585,9 @@ export const deleteUser = async (req, res, next) => {
       deletedUserName: user.name 
     }, req);
 
-    res.json({ message: 'User deleted successfully' });
+    const response = { message: 'User deleted successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -490,6 +601,7 @@ export const getHandbooks = async (req, res, next) => {
       .populate('priorityEditor')
       .populate('editedBy')
       .sort({ createdAt: -1 });
+    logAndSetHeader(req, res, 'GET', '/api/admin/handbook', 200, handbooks);
     res.json(handbooks);
   } catch (error) {
     next(error);
@@ -504,7 +616,9 @@ export const updateHandbookStatus = async (req, res, next) => {
 
     const handbook = await Handbook.findById(id);
     if (!handbook) {
-      return res.status(404).json({ message: 'Handbook not found' });
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     handbook.status = status;
@@ -533,7 +647,9 @@ export const updateHandbookStatus = async (req, res, next) => {
         emitGlobal('handbook:approved', { id: handbook._id, pageNumber: handbook.pageNumber });
       } catch (e) {}
     }
-    res.json({ message: `Handbook ${status} successfully`, handbook });
+    const response = { message: `Handbook ${status} successfully`, handbook };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -546,7 +662,9 @@ export const deleteHandbook = async (req, res, next) => {
     const handbook = await Handbook.findById(id);
     
     if (!handbook) {
-      return res.status(404).json({ message: 'Handbook not found' });
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     await Handbook.findByIdAndDelete(id);
@@ -562,7 +680,9 @@ export const deleteHandbook = async (req, res, next) => {
       pageNumber: handbook.pageNumber 
     }, req);
 
-    res.json({ message: 'Handbook deleted successfully' });
+    const response = { message: 'Handbook deleted successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -576,6 +696,7 @@ export const getMemorandums = async (req, res, next) => {
       .populate('priorityEditor')
       .populate('editedBy')
       .sort({ uploadedAt: -1 });
+    logAndSetHeader(req, res, 'GET', '/api/admin/memorandums', 200, memorandums);
     res.json(memorandums);
   } catch (error) {
     next(error);
@@ -590,7 +711,9 @@ export const updateMemorandumStatus = async (req, res, next) => {
 
     const memorandum = await Memorandum.findById(id);
     if (!memorandum) {
-      return res.status(404).json({ message: 'Memorandum not found' });
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     memorandum.status = status;
@@ -619,7 +742,9 @@ export const updateMemorandumStatus = async (req, res, next) => {
         emitGlobal('memorandum:approved', { id: memorandum._id, title: memorandum.title });
       } catch (e) {}
     }
-    res.json({ message: `Memorandum ${status} successfully`, memorandum });
+    const response = { message: `Memorandum ${status} successfully`, memorandum };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -632,7 +757,9 @@ export const deleteMemorandum = async (req, res, next) => {
     const memorandum = await Memorandum.findById(id);
     
     if (!memorandum) {
-      return res.status(404).json({ message: 'Memorandum not found' });
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 404, response);
+      return res.status(404).json(response);
     }
 
     await Memorandum.findByIdAndDelete(id);
@@ -648,7 +775,9 @@ export const deleteMemorandum = async (req, res, next) => {
       title: memorandum.title 
     }, req);
 
-    res.json({ message: 'Memorandum deleted successfully' });
+    const response = { message: 'Memorandum deleted successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
@@ -661,6 +790,7 @@ export const getActivityLogs = async (req, res, next) => {
       .populate('user', 'name email role')
       .sort({ timestamp: -1 })
       .limit(1000);
+    logAndSetHeader(req, res, 'GET', '/api/admin/activity-logs', 200, logs);
     res.json(logs);
   } catch (error) {
     next(error);

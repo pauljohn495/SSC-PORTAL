@@ -28,6 +28,18 @@ const ManageUsers = () => {
     try {
       setLoading(true);
       const response = await fetch('http://localhost:5001/api/admin/users');
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       const data = await response.json();
       // Show all users, not just admin and president
       setUsers(data);
@@ -62,6 +74,18 @@ const ManageUsers = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: presidentEmail })
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       const data = await response.json();
       
       if (response.ok) {
@@ -91,6 +115,18 @@ const ManageUsers = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(adminForm)
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       const data = await response.json();
       
       if (response.ok) {
@@ -115,8 +151,19 @@ const ManageUsers = () => {
       const response = await fetch(`http://localhost:5001/api/admin/users/${userId}`, {
         method: 'DELETE'
       });
+      
+      // Check for API log header and log to browser console
+      const apiLogHeader = response.headers.get('X-API-Log');
+      if (apiLogHeader) {
+        try {
+          const logData = JSON.parse(apiLogHeader);
+          console.log('[API Log]', JSON.stringify(logData, null, 2));
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
+      
       const data = await response.json();
-      console.log('Delete response:', response.status, data);
       setMessage(data.message);
       if (response.ok) {
         setUsers(users.filter(user => user._id !== userId)); // Remove from list immediately

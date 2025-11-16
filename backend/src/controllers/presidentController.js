@@ -17,13 +17,18 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
   if (responseData?.content) {
     content = responseData.content;
   } else if (responseData?.handbook) {
-    content = responseData.handbook;
+    // Convert Mongoose document to plain object and exclude content field to avoid large headers and invalid characters
+    const handbookObj = responseData.handbook.toObject ? responseData.handbook.toObject() : responseData.handbook;
+    const { content: handbookContent, ...handbookWithoutContent } = handbookObj;
+    content = handbookWithoutContent;
   } else if (responseData?.memorandum) {
-    // Exclude fileUrl from memorandum to avoid large headers
-    const { fileUrl, ...memorandumWithoutFile } = responseData.memorandum;
+    // Convert Mongoose document to plain object and exclude fileUrl to avoid large headers
+    const memorandumObj = responseData.memorandum.toObject ? responseData.memorandum.toObject() : responseData.memorandum;
+    const { fileUrl, ...memorandumWithoutFile } = memorandumObj;
     content = memorandumWithoutFile;
   } else if (responseData?.notification) {
-    content = responseData.notification;
+    const notificationObj = responseData.notification.toObject ? responseData.notification.toObject() : responseData.notification;
+    content = notificationObj;
   } else if (responseData?.logs) {
     content = responseData.logs;
   } else if (responseData?.notifications) {
@@ -43,15 +48,51 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
     content
   };
   
-  // Set custom header for browser console logging only (no server console log)
-  // Limit header size to prevent issues (max ~8KB for headers)
+ 
   try {
-    const headerValue = JSON.stringify(logData);
+    // Safely stringify, handling circular references and other edge cases
+    let headerValue;
+    try {
+      headerValue = JSON.stringify(logData);
+    } catch (stringifyError) {
+      // If stringify fails, create a simplified version
+      headerValue = JSON.stringify({
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || 'Response data could not be serialized'
+      });
+    }
+    
+    headerValue = headerValue.replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '');
+    
+    // Replace tabs, newlines, and carriage returns with spaces
+    headerValue = headerValue.replace(/[\r\n\t]/g, ' ');
+    
+    // Replace multiple spaces with single space
+    headerValue = headerValue.replace(/\s+/g, ' ');
+    
+    // Trim the value
+    headerValue = headerValue.trim();
+    
     if (headerValue.length > 8000) {
       // If too large, simplify further
-      logData.content = Array.isArray(content) ? `[Array of ${content.length} items]` : '[Content too large]';
-      res.setHeader('X-API-Log', JSON.stringify(logData));
-    } else {
+      const simplifiedLogData = {
+        method: logData.method,
+        endpoint: logData.endpoint,
+        status: logData.status,
+        message: logData.message || null,
+        content: Array.isArray(content) ? `[Array of ${content.length} items]` : '[Content too large]'
+      };
+      headerValue = JSON.stringify(simplifiedLogData)
+        .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // Only set header if value is valid and not empty
+    if (headerValue && headerValue.length > 0) {
       res.setHeader('X-API-Log', headerValue);
     }
   } catch (error) {
@@ -678,7 +719,11 @@ export const getNotifications = async (req, res, next) => {
       .sort({ published: -1, publishedAt: -1, createdAt: -1 });
     
     const response = notifications;
-    logAndSetHeader(req, res, 'GET', '/api/president/notifications', 200, { notifications: response, count: response.length });
+    logAndSetHeader(req, res, 'GET', '/api/president/notifications', 200, { 
+      message: `Fetched ${notifications.length} notification${notifications.length !== 1 ? 's' : ''}`,
+      notifications: response, 
+      count: response.length 
+    });
     res.json(response);
   } catch (error) {
     next(error);

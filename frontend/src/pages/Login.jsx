@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { GoogleLogin } from '@react-oauth/google';
 import {jwtDecode} from 'jwt-decode';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,6 +17,14 @@ function Login() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const recaptchaRef = React.useRef(null);
+
+  useEffect(() => {
+    console.log(JSON.stringify({
+      method: 'GET',
+      status: 200,
+      message: 'Login page loaded'
+    }))
+  }, [])
 
 const handleLoginsuccess = async (credentialResponse) => {
 
@@ -40,6 +48,17 @@ const handleLoginsuccess = async (credentialResponse) => {
     })
   });
 
+  // Check for API log header and log to browser console
+  const apiLogHeader = response.headers.get('X-API-Log');
+  if (apiLogHeader) {
+    try {
+      const logData = JSON.parse(apiLogHeader);
+      console.log('[API Log]', JSON.stringify(logData, null, 2));
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -56,6 +75,21 @@ const handleLoginsuccess = async (credentialResponse) => {
 
   // Store user in context and localStorage
   login(data.user);
+
+  // Log based on user role
+  if (data.user.role === 'president') {
+    console.log(JSON.stringify({
+      method: 'POST',
+      status: 200,
+      message: 'President logged in successfully'
+    }))
+  } else {
+    console.log(JSON.stringify({
+      method: 'POST',
+      status: 200,
+      message: 'User logged in successfully'
+    }))
+  }
 
   // Redirect to home after login
   navigate('/');
@@ -79,6 +113,17 @@ const handleAdminLogin = async (e) => {
     body: JSON.stringify({ username, password, recaptchaToken: recaptchaToken || null })
   });
 
+  // Check for API log header and log to browser console
+  const apiLogHeader = response.headers.get('X-API-Log');
+  if (apiLogHeader) {
+    try {
+      const logData = JSON.parse(apiLogHeader);
+      console.log('[API Log]', JSON.stringify(logData, null, 2));
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+
   const data = await response.json();
 
   if (!response.ok) {
@@ -93,6 +138,12 @@ const handleAdminLogin = async (e) => {
 
   // Store user in context and localStorage
   login(data.user);
+
+  console.log(JSON.stringify({
+    method: 'POST',
+    status: 200,
+    message: 'Admin logged in successfully'
+  }))
 
   // Redirect to home after login
   navigate('/');
@@ -112,6 +163,17 @@ const handleForgotPassword = async (e) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: forgotEmail.trim() })
     });
+
+    // Check for API log header and log to browser console
+    const apiLogHeader = response.headers.get('X-API-Log');
+    if (apiLogHeader) {
+      try {
+        const logData = JSON.parse(apiLogHeader);
+        console.log('[API Log]', JSON.stringify(logData, null, 2));
+      } catch (e) {
+        // Ignore parsing errors
+      }
+    }
 
     const data = await response.json();
 

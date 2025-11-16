@@ -27,7 +27,7 @@ const apiRequest = async (endpoint, options = {}) => {
         const logData = JSON.parse(apiLogHeader);
         console.log('[API Log]', JSON.stringify(logData, null, 2));
       } catch (e) {
-        // Ignore parsing errors
+        // Silently ignore parsing errors
       }
     }
     
