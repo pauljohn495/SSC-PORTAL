@@ -7,6 +7,7 @@ import NotificationDropdown from '../components/NotificationDropdown'
 const Memorandum = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [memorandums, setMemorandums] = useState([])
+  const [searchQuery, setSearchQuery] = useState('')
   const { logout, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -89,6 +90,18 @@ const Memorandum = () => {
     }
   }
 
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    if (!searchQuery.trim()) {
+      return
+    }
+
+    const params = new URLSearchParams()
+    params.set('q', searchQuery.trim())
+    params.set('type', 'memorandum')
+    navigate(`/search?${params.toString()}`)
+  }
+
   // Group memorandums by year
   const groupedMemorandums = memorandums.reduce((acc, memo) => {
     if (!acc[memo.year]) {
@@ -144,7 +157,6 @@ const Memorandum = () => {
             <li className='py-2'><Link to="/" className="hover:underline">Home</Link></li>
             <li className='py-2'><Link to="/student-handbook" className="hover:underline">Handbook</Link></li>
             <li className='py-2'><Link to="/memorandum" className="hover:underline">Memorandum</Link></li>
-            <li className='py-2'><Link to="/search" className="hover:underline">Search</Link></li>
             <li className='py-2'><Link to="/buksu-calendar" className="hover:underline">BUKSU Calendar</Link></li>
 
             <li className='py-2'><button onClick={handleLogout} className="hover:underline text-left w-full">Logout</button></li>
@@ -155,7 +167,31 @@ const Memorandum = () => {
       <main className='p-8'>
         <div className='max-w-5xl mx-auto'>
           <h1 className='text-4xl font-bold text-center mb-12 text-blue-950'>BUKIDNON STATE UNIVERSITY MEMO</h1>
-          
+
+          <section className='bg-white rounded-xl shadow-2xl p-8 text-blue-950 mb-12 border border-gray-100'>
+            <h2 className='text-2xl font-bold mb-6'>Search Memorandums</h2>
+            <form onSubmit={handleSearchSubmit} className='grid grid-cols-1 md:grid-cols-5 gap-6'>
+              <div className='md:col-span-3'>
+                <label className='block text-sm font-semibold text-gray-700 mb-2'>Keyword</label>
+                <input
+                  type='text'
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder='Enter keyword or phrase'
+                  className='w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
+                />
+              </div>
+              <div className='md:col-span-2 flex items-end'>
+                <button
+                  type='submit'
+                  className='w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition'
+                >
+                  Search
+                </button>
+              </div>
+            </form>
+          </section>
+
           {sortedYears.length > 0 ? (
             sortedYears.map((year) => (
               <div key={year} className='mb-12'>

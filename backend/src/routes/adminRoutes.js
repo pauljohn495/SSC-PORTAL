@@ -8,19 +8,26 @@ router.get('/users', adminController.getUsers);
 router.post('/add-admin', adminController.addAdmin);
 router.post('/add-president', adminController.addPresident);
 router.put('/users/:id/archive', adminController.archiveUser);
+router.put('/users/:id/restore', adminController.restoreUser);
+router.delete('/users/:id', adminController.deleteUser);
 
 // Handbook management
 router.get('/handbook', adminController.getHandbooks);
 router.put('/handbook/:id', adminController.updateHandbookStatus);
 router.delete('/handbook/:id', adminController.deleteHandbook);
+router.put('/handbook/:id/restore', adminController.restoreHandbook);
+router.delete('/handbook/:id/permanent', adminController.permanentlyDeleteHandbook);
 
 // Memorandum management
 router.get('/memorandums', adminController.getMemorandums);
 router.put('/memorandums/:id', adminController.updateMemorandumStatus);
 router.delete('/memorandums/:id', adminController.deleteMemorandum);
+router.put('/memorandums/:id/restore', adminController.restoreMemorandum);
+router.delete('/memorandums/:id/permanent', adminController.permanentlyDeleteMemorandum);
 
 // Activity logs
 router.get('/activity-logs', adminController.getActivityLogs);
+router.get('/archived', adminController.getArchivedItems);
 
 export default router;
 

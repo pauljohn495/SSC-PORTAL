@@ -9,7 +9,7 @@ import { PDFDocument } from 'pdf-lib';
 // Get all approved handbooks
 export const getPublicHandbooks = async (req, res, next) => {
   try {
-    const handbooks = await Handbook.find({ status: 'approved' }).sort({ pageNumber: 1 });
+    const handbooks = await Handbook.find({ status: 'approved', archived: { $ne: true } }).sort({ pageNumber: 1 });
     
     // Extract PDF content for handbooks that don't have it yet
     for (const handbook of handbooks) {
@@ -43,7 +43,7 @@ export const getPublicHandbooks = async (req, res, next) => {
 // Get all approved memorandums
 export const getPublicMemorandums = async (req, res, next) => {
   try {
-    const memorandums = await Memorandum.find({ status: 'approved' }).sort({ uploadedAt: -1 });
+    const memorandums = await Memorandum.find({ status: 'approved', archived: { $ne: true } }).sort({ uploadedAt: -1 });
     res.json(memorandums);
   } catch (error) {
     next(error);
@@ -101,8 +101,8 @@ export const downloadHandbookPage = async (req, res, next) => {
       return res.status(404).json({ message: 'Handbook not found' });
     }
 
-    if (handbook.status !== 'approved') {
-      return res.status(403).json({ message: 'Handbook is not approved' });
+    if (handbook.status !== 'approved' || handbook.archived) {
+      return res.status(403).json({ message: 'Handbook is not available' });
     }
 
     // Get file path

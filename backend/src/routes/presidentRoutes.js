@@ -1,37 +1,53 @@
 import express from 'express';
-import * as presidentController from '../controllers/presidentController.js';
-import * as calendarController from '../controllers/calendarController.js';
+import { getAuthUrl, oauthCallback, listEvents, createEvent, updateEvent, archiveEvent, getArchivedEvents, restoreEvent, deleteEvent } from '../controllers/calendarController.js';
+import {
+  createHandbook,
+  updateHandbook,
+  getNotifications,
+  createNotification,
+  publishNotification,
+  deleteNotification,
+  uploadMemorandum,
+  updateMemorandum,
+  getDriveAuthUrl,
+  driveOAuthCallback,
+  getDriveConnectionStatus
+} from '../controllers/presidentController.js';
+import { getActivityLogs } from '../controllers/adminController.js';
 
 const router = express.Router();
 
-// Memorandum routes
-router.post('/memorandums', presidentController.uploadMemorandum);
-router.post('/memorandums/:id/priority', presidentController.setMemorandumPriority);
-router.put('/memorandums/:id', presidentController.updateMemorandum);
-router.post('/memorandums/:id/clear-priority', presidentController.clearMemorandumPriority);
+// Calendar routes
+router.get('/calendar/auth-url', getAuthUrl);
+router.get('/calendar/oauth/callback', oauthCallback);
+router.get('/calendar/events', listEvents);
+router.post('/calendar/events', createEvent);
+router.put('/calendar/events/:eventId', updateEvent);
+router.put('/calendar/events/:eventId/archive', archiveEvent);
+router.get('/calendar/events/archived', getArchivedEvents);
+router.put('/calendar/events/:eventId/restore', restoreEvent);
+router.delete('/calendar/events/:eventId', deleteEvent);
+
+// Google Drive OAuth routes
+router.get('/drive/auth-url', getDriveAuthUrl);
+router.get('/drive/oauth/callback', driveOAuthCallback);
+router.get('/drive/status', getDriveConnectionStatus);
 
 // Handbook routes
-router.post('/handbook', presidentController.createHandbook);
-router.post('/handbook/:id/priority', presidentController.setHandbookPriority);
-router.put('/handbook/:id', presidentController.updateHandbook);
-router.post('/handbook/:id/clear-priority', presidentController.clearHandbookPriority);
+router.post('/handbook', createHandbook);
+router.put('/handbook/:id', updateHandbook);
 
-// Activity logs
-router.get('/activity-logs', presidentController.getUserActivityLogs);
+// Notifications routes
+router.get('/notifications', getNotifications);
+router.post('/notifications', createNotification);
+router.post('/notifications/:id/publish', publishNotification);
+router.delete('/notifications/:id', deleteNotification);
 
-// Notification routes
-router.post('/notifications', presidentController.createNotification);
-router.post('/notifications/:id/publish', presidentController.publishNotification);
-router.delete('/notifications/:id', presidentController.deleteNotification);
-router.get('/notifications', presidentController.getNotifications);
+// Memorandum routes
+router.post('/memorandums', uploadMemorandum);
+router.put('/memorandums/:id', updateMemorandum);
 
-// Google Calendar routes (president only)
-router.get('/calendar/auth-url', calendarController.getAuthUrl);
-router.get('/calendar/oauth/callback', calendarController.oauthCallback);
-router.get('/calendar/events', calendarController.listEvents);
-router.post('/calendar/events', calendarController.createEvent);
-router.put('/calendar/events/:eventId', calendarController.updateEvent);
-router.put('/calendar/events/:eventId/archive', calendarController.archiveEvent);
+// Activity logs routes
+router.get('/activity-logs', getActivityLogs);
 
 export default router;
-

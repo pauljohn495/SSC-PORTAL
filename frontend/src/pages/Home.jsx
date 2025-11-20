@@ -8,7 +8,6 @@ import bgimage from '../assets/bg-image.jpg'
 import buksunew from '../assets/buksu-new.png'
 const Home = () => {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [homeSearch, setHomeSearch] = useState('')
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [profileError, setProfileError] = useState('')
   const [isSavingProfile, setIsSavingProfile] = useState(false)
@@ -94,18 +93,6 @@ const Home = () => {
     handleLogout()
   }
 
-  const handleHomeSearch = (event) => {
-    event.preventDefault()
-    if (!homeSearch.trim()) {
-      return
-    }
-
-    const params = new URLSearchParams()
-    params.set('q', homeSearch.trim())
-    params.set('type', 'memorandum')
-    navigate(`/search?${params.toString()}`)
-  }
-
   // Show loading or nothing while checking auth
   if (authLoading || !user) {
     return null
@@ -171,7 +158,6 @@ const Home = () => {
                       <li className='px-4 py-2'><Link to="/" className="hover:underline">Home</Link></li>
                       <li className='px-4 py-2'><Link to="/student-handbook" className="hover:underline">Handbook</Link></li>
                       <li className='px-4 py-2'><Link to="/memorandum" className="hover:underline">Memorandum</Link></li>
-                      <li className='px-4 py-2'><Link to="/search" className="hover:underline">Search</Link></li>
                       <li className='px-4 py-2'><Link to="/buksu-calendar" className="hover:underline">BUKSU Calendar</Link></li>
                       <li className='px-4 py-2'>
                         <button onClick={handleLogout} className="hover:underline text-left w-full">Logout</button>
@@ -213,43 +199,6 @@ const Home = () => {
           </div>
         </section>
 
-        <section className='bg-white py-16'>
-          <div className='max-w-6xl mx-auto px-6'>
-            <div className='bg-white rounded-xl shadow-2xl p-8 text-blue-950'>
-              <h2 className='text-2xl font-bold mb-6'>Search Handbooks & Memorandums</h2>
-              <form onSubmit={handleHomeSearch} className='grid grid-cols-1 md:grid-cols-4 gap-6'>
-                <div className='md:col-span-2'>
-                  <label className='block text-sm font-semibold text-gray-700 mb-2'>Search</label>
-                  <input
-                    type='text'
-                    value={homeSearch}
-                    onChange={(e) => setHomeSearch(e.target.value)}
-                    placeholder='Enter keyword or phrase'
-                    className='w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
-                  />
-                </div>
-                <div>
-                  <label className='block text-sm font-semibold text-gray-700 mb-2'>Type</label>
-                  <div className='px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-700 flex items-center'>
-                    All
-                  </div>
-                </div>
-                <div>
-                  <label className='block text-sm font-semibold text-gray-700 mb-2'>Year</label>
-                  <div className='px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-400'>Optional</div>
-                </div>
-                <div className='md:col-span-4 flex justify-end'>
-                  <button
-                    type='submit'
-                    className='bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition'
-                  >
-                    Search
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </section>
       </main>
 
       <footer className='bg-blue-950 text-white py-10'>

@@ -16,6 +16,7 @@ import AddPresident from './pages/AddPresident'
 import AddAdmin from './pages/AddAdmin'
 import ManageUsers from './pages/ManageUsers'
 import ActivityLogs from './pages/ActivityLogs'
+import Archived from './pages/Archived'
 import PresidentDashboard from './pages/PresidentDashboard'
 import PresidentMemorandum from './pages/PresidentMemorandum'
 import PresidentHandbook from './pages/PresidentHandbook'
@@ -92,6 +93,7 @@ function App() {
           <Route path="/admin-memorandum" element={<AdminMemorandum />} />
           <Route path="/manage-users" element={<ManageUsers />} />
           <Route path="/activity-logs" element={<ActivityLogs />} />
+          <Route path="/archived" element={<Archived />} />
           <Route path="/president-dashboard" element={<PresidentDashboard />} />
           <Route path="/president-memorandum" element={<PresidentMemorandum />} />
           <Route path="/president-handbook" element={<PresidentHandbook />} />

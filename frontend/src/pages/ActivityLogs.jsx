@@ -108,6 +108,7 @@ const ActivityLogs = () => {
           <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
           <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Manage User</Link></li>
           <li><Link to="/activity-logs" className="block py-2 px-4 bg-blue-800 rounded transition">Activity Logs</Link></li>
+          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Archived</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>

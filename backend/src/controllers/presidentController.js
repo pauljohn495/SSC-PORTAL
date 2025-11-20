@@ -9,6 +9,7 @@ import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { extractTextFromPDF } from '../utils/pdfExtractor.js';
+import { google } from 'googleapis';
 
 // Helper function to create simplified log and set response header
 const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
@@ -101,6 +102,170 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
   }
   
   return logData;
+};
+
+// Helper function to get OAuth2 client for Google Drive
+// Uses a different redirect URI to distinguish from Calendar OAuth
+const getDriveOAuth2Client = (tokens) => {
+  // Construct Drive-specific redirect URI
+  // If redirectUri is like http://localhost:5001/api/president/calendar/oauth/callback
+  // Change it to http://localhost:5001/api/president/drive/oauth/callback
+  let driveRedirectUri = config.google.redirectUri;
+  if (driveRedirectUri.includes('/calendar/oauth/callback')) {
+    driveRedirectUri = driveRedirectUri.replace('/calendar/oauth/callback', '/drive/oauth/callback');
+  } else if (driveRedirectUri.includes('/oauth/callback')) {
+    // If it's a generic callback, replace with drive-specific
+    driveRedirectUri = driveRedirectUri.replace('/oauth/callback', '/drive/oauth/callback');
+  } else {
+    // Fallback: append drive path
+    const baseUrl = driveRedirectUri.split('/oauth')[0] || driveRedirectUri;
+    driveRedirectUri = `${baseUrl}/drive/oauth/callback`;
+  }
+  
+  const oAuth2Client = new google.auth.OAuth2(
+    config.google.clientId,
+    config.google.clientSecret,
+    driveRedirectUri
+  );
+  if (tokens) {
+    oAuth2Client.setCredentials(tokens);
+  }
+  return oAuth2Client;
+};
+
+// Get Google Drive OAuth authorization URL
+export const getDriveAuthUrl = async (req, res, next) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (user.role !== 'president') {
+      const response = { message: 'Only presidents can connect Google Drive' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 403, response);
+      return res.status(403).json(response);
+    }
+
+    const oAuth2Client = getDriveOAuth2Client();
+    const scopes = [
+      'https://www.googleapis.com/auth/drive.file', // Access to files created by this app
+    ];
+    const state = encodeURIComponent(JSON.stringify({ userId }));
+    const authUrl = oAuth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: scopes,
+      prompt: 'consent',
+      state
+    });
+
+    const response = { url: authUrl };
+    logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Handle Google Drive OAuth callback
+export const driveOAuthCallback = async (req, res, next) => {
+  try {
+    const { code, state } = req.query;
+    const { userId } = JSON.parse(decodeURIComponent(state || '{}'));
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 404, response);
+      return res.status(404).send(response.message);
+    }
+
+    if (user.role !== 'president') {
+      const response = { message: 'Forbidden' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 403, response);
+      return res.status(403).send(response.message);
+    }
+
+    const oAuth2Client = getDriveOAuth2Client();
+    const { tokens } = await oAuth2Client.getToken(code);
+
+    user.googleDrive = {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token || user.googleDrive?.refreshToken,
+      scope: tokens.scope,
+      tokenType: tokens.token_type,
+      expiryDate: tokens.expiry_date
+    };
+    await user.save();
+
+    const response = { message: 'Google Drive connected successfully! You can close this window.' };
+    logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 200, response);
+    res.send(
+      `<html>
+        <body>
+          <h2>${response.message}</h2>
+          <script>
+            (function() {
+              try {
+                if (window.opener && typeof window.opener.postMessage === 'function') {
+                  window.opener.postMessage('google-drive-connected', '*');
+                }
+              } catch (err) {
+                console.error('Failed to notify opener about Drive connection:', err);
+              }
+              setTimeout(function() { window.close(); }, 2000);
+            })();
+          </script>
+        </body>
+      </html>`
+    );
+  } catch (error) {
+    const response = { message: `OAuth error: ${error.message}` };
+    logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 400, response);
+    res.status(400).send(response.message);
+  }
+};
+
+export const getDriveConnectionStatus = async (req, res, next) => {
+  try {
+    const { userId } = req.query;
+
+    if (!userId) {
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (user.role !== 'president') {
+      const response = { message: 'Forbidden' };
+      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 403, response);
+      return res.status(403).json(response);
+    }
+
+    const connected = Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken);
+    const response = { connected };
+    logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
 };
 
 // Upload memorandum
@@ -378,56 +543,82 @@ export const createHandbook = async (req, res, next) => {
       return res.status(403).json(response);
     }
 
-    // Check if there's already an approved handbook - delete all old pages first
+    // Check if there's already an approved handbook - delete old ones first
     const existingApproved = await Handbook.find({ status: 'approved' });
     if (existingApproved.length > 0) {
-      // Delete old PDF files
-      const { deletePDFFile } = await import('../utils/fileStorage.js');
+      // Delete old Google Drive files (handle errors gracefully)
+      const { deleteFileFromDrive } = await import('../utils/googleDrive.js');
       for (const oldHandbook of existingApproved) {
-        if (oldHandbook.fileUrl && !oldHandbook.fileUrl.startsWith('data:')) {
-          deletePDFFile(oldHandbook.fileUrl);
+        if (oldHandbook.googleDriveFileId) {
+          try {
+            await deleteFileFromDrive(oldHandbook.googleDriveFileId, userId);
+          } catch (error) {
+            // Log but continue - file might not exist or deletion might fail
+            console.warn(`Could not delete Google Drive file ${oldHandbook.googleDriveFileId}:`, error.message);
+          }
+        }
+        // Also handle old file system files for backward compatibility
+        if (oldHandbook.fileUrl && !oldHandbook.fileUrl.startsWith('data:') && !oldHandbook.fileUrl.startsWith('http')) {
+          try {
+            const { deletePDFFile } = await import('../utils/fileStorage.js');
+            deletePDFFile(oldHandbook.fileUrl);
+          } catch (error) {
+            // Log but continue - file might not exist
+            console.warn(`Could not delete file system file ${oldHandbook.fileUrl}:`, error.message);
+          }
         }
       }
       // Delete old handbook entries
       await Handbook.deleteMany({ status: 'approved' });
     }
 
-    // Split PDF into individual pages
-    const { splitPDFIntoPages } = await import('../utils/pdfSplitter.js');
-    const pages = await splitPDFIntoPages(fileUrl, fileName || 'handbook.pdf');
-    
-    console.log(`Creating ${pages.length} handbook entries...`);
-    
-    // Create Handbook entry for each page
-    const createdHandbooks = [];
-    for (const page of pages) {
-      const handbook = new Handbook({
-        fileUrl: page.filePath,
-        fileName: `${fileName || 'handbook.pdf'} - Page ${page.pageNumber}`,
-        pdfContent: page.pdfContent,
-        pageNumber: page.pageNumber,
-        createdBy: userId
-      });
-      await handbook.save();
-      createdHandbooks.push(handbook);
+    // Convert base64 to buffer
+    let base64Content = fileUrl;
+    if (fileUrl.includes(',')) {
+      base64Content = fileUrl.split(',')[1];
     }
+    const pdfBuffer = Buffer.from(base64Content, 'base64');
 
-    await logActivity(userId, 'handbook_create', `Handbook created with ${pages.length} pages: ${fileName || 'handbook.pdf'}`, { 
-      handbookCount: pages.length,
-      fileName: fileName || 'handbook.pdf'
+    // Upload whole PDF to Google Drive
+    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+    const { config } = await import('../config/index.js');
+    
+    const sanitizedFileName = (fileName || 'handbook.pdf').replace(/[^a-zA-Z0-9.-]/g, '_');
+    const driveFolderId = config.google.driveFolderId || null;
+    
+    console.log('Uploading PDF to Google Drive...');
+    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    
+    // Extract text content from PDF for search indexing
+    console.log('Extracting text from PDF for search...');
+    const pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+    
+    // Create single Handbook entry for the whole PDF
+    const handbook = new Handbook({
+      fileName: sanitizedFileName,
+      googleDriveFileId: driveResult.fileId,
+      googleDrivePreviewUrl: driveResult.previewUrl,
+      pdfContent: pdfContent,
+      createdBy: userId
+    });
+    await handbook.save();
+
+    await logActivity(userId, 'handbook_create', `Handbook created and uploaded to Google Drive: ${sanitizedFileName}`, { 
+      fileName: sanitizedFileName,
+      googleDriveFileId: driveResult.fileId
     }, req);
 
-    // Return summary without large fileUrl to avoid large response payloads
+    // Return summary
     const response = { 
-      message: `Handbook draft created with ${pages.length} pages`, 
-      totalPages: pages.length,
-      handbooks: createdHandbooks.map(h => ({
-        _id: h._id,
-        pageNumber: h.pageNumber,
-        fileName: h.fileName,
-        status: h.status,
-        createdAt: h.createdAt
-      }))
+      message: 'Handbook draft created and uploaded to Google Drive', 
+      handbook: {
+        _id: handbook._id,
+        fileName: handbook.fileName,
+        googleDriveFileId: handbook.googleDriveFileId,
+        googleDrivePreviewUrl: handbook.googleDrivePreviewUrl,
+        status: handbook.status,
+        createdAt: handbook.createdAt
+      }
     };
     logAndSetHeader(req, res, 'POST', '/api/president/handbook', 201, response);
     res.status(201).json(response);

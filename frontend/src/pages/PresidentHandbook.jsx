@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { logApiResponse } from '../utils/fetchWithLogging';
 
 const PresidentHandbook = () => {
-  const { logout, user } = useAuth();
+  const { logout, user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -18,15 +18,11 @@ const PresidentHandbook = () => {
   const [editVersion, setEditVersion] = useState(1);
   const [hasPriority, setHasPriority] = useState(false);
   const [priorityError, setPriorityError] = useState('');
+  const [driveConnected, setDriveConnected] = useState(() => Boolean(user?.googleDriveConnected));
+  const [checkingDrive, setCheckingDrive] = useState(true);
   const fileInputRef = useRef(null);
 
   const isAuthorized = !!user && user.role === 'president';
-
-  useEffect(() => {
-    if (isAuthorized) {
-      fetchHandbooks();
-    }
-  }, [isAuthorized]);
 
   const fetchHandbooks = async () => {
     try {
@@ -41,6 +37,83 @@ const PresidentHandbook = () => {
     }
   };
 
+  useEffect(() => {
+    if (typeof user?.googleDriveConnected === 'boolean') {
+      setDriveConnected(user.googleDriveConnected);
+    }
+  }, [user?.googleDriveConnected]);
+
+  const checkDriveConnection = useCallback(async () => {
+    if (!user?._id) return;
+    try {
+      setCheckingDrive(true);
+      const res = await fetch(`/api/president/drive/status?userId=${user._id}`);
+      if (!res.ok) {
+        throw new Error('Failed to verify Google Drive connection');
+      }
+      const data = await res.json();
+      const isConnected = Boolean(data.connected);
+      setDriveConnected(isConnected);
+      updateUser({ googleDriveConnected: isConnected });
+    } catch (error) {
+      console.error('Error checking Drive connection:', error);
+      setDriveConnected(false);
+      updateUser({ googleDriveConnected: false });
+      setMessage('Unable to verify Google Drive connection. Please try again.');
+      setMessageType('error');
+    } finally {
+      setCheckingDrive(false);
+    }
+  }, [updateUser, user?._id]);
+
+  useEffect(() => {
+    if (isAuthorized) {
+      fetchHandbooks();
+      checkDriveConnection();
+      // Listen for OAuth callback
+      const handleMessage = (event) => {
+        if (event.data === 'google-drive-connected') {
+          setMessage('Google Drive connected successfully.');
+          setMessageType('success');
+          checkDriveConnection();
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      return () => window.removeEventListener('message', handleMessage);
+    }
+  }, [isAuthorized, user, checkDriveConnection]);
+
+  const connectGoogleDrive = async () => {
+    if (!user?._id) return;
+    try {
+      const res = await fetch(`/api/president/drive/auth-url?userId=${user._id}`);
+      logApiResponse(res);
+      if (res.ok) {
+        const { url } = await res.json();
+        const popup = window.open(url, '_blank', 'width=500,height=700');
+        
+        // Poll for popup closure and reload page to refresh user data
+        const checkClosed = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkClosed);
+            // Wait a bit for the callback to complete, then verify status
+            setTimeout(() => {
+              checkDriveConnection();
+            }, 1500);
+          }
+        }, 500);
+      } else {
+        const data = await res.json();
+        setMessage(data.message || 'Failed to get Google Drive authorization URL');
+        setMessageType('error');
+      }
+    } catch (error) {
+      console.error('Error connecting Google Drive:', error);
+      setMessage('Error connecting Google Drive. Please try again.');
+      setMessageType('error');
+    }
+  };
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (editingHandbook) {
@@ -52,6 +125,13 @@ const PresidentHandbook = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Check if Google Drive is connected
+    if (!driveConnected) {
+      setMessage('Please connect your Google Drive account first to upload handbooks.');
+      setMessageType('error');
+      return;
+    }
     
     if (!file) {
       setMessage('Please select a PDF file to upload.');
@@ -362,6 +442,22 @@ const PresidentHandbook = () => {
           <div className='flex justify-between items-center mb-8'>
             <h1 className='text-3xl font-bold text-blue-950'>Student Handbook</h1>
             <div className='flex items-center space-x-4'>
+              {/* Google Drive Connection Status */}
+              {!checkingDrive && (
+                <div className='flex items-center space-x-2'>
+                  {driveConnected ? null : (
+                    <button
+                      onClick={connectGoogleDrive}
+                      className='flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors'
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      <span>Connect Google Drive</span>
+                    </button>
+                  )}
+                </div>
+              )}
               <button 
                 onClick={() => { setLoading(true); fetchHandbooks(); }} 
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
@@ -373,13 +469,44 @@ const PresidentHandbook = () => {
                 <span>Refresh</span>
               </button>
               <button
-                onClick={() => setShowModal(true)}
-                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+                onClick={() => {
+                  if (!driveConnected) {
+                    setMessage('Please connect your Google Drive account first to upload handbooks.');
+                    setMessageType('error');
+                    return;
+                  }
+                  setShowModal(true);
+                }}
+                disabled={!driveConnected}
+                className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
+                  driveConnected
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-400 cursor-not-allowed text-white'
+                }`}
               >
                 Create Handbook
               </button>
             </div>
           </div>
+
+          {/* Drive Connection Warning */}
+          {!checkingDrive && !driveConnected && (
+            <div className='mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg'>
+              <div className='flex items-start space-x-3'>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className='flex-1'>
+                  <p className='text-sm font-medium text-yellow-800'>
+                    Google Drive Not Connected
+                  </p>
+                  <p className='text-sm text-yellow-700 mt-1'>
+                    You need to connect your Google Drive account to upload handbooks. Click "Connect Google Drive" above to get started.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Handbook List */}
           <div className='bg-white rounded-lg shadow-md mb-8'>

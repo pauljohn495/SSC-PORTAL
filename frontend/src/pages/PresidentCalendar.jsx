@@ -46,6 +46,7 @@ const PresidentCalendar = () => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [events, setEvents] = useState([])
+  const [archivedEvents, setArchivedEvents] = useState([])
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({ summary: '', description: '', startISO: '', endISO: '', location: '' })
   const [startDate, setStartDate] = useState(null)
@@ -58,6 +59,7 @@ const PresidentCalendar = () => {
       return
     }
     fetchEvents()
+    fetchArchivedEvents()
   }, [user])
 
   const fetchEvents = async () => {
@@ -67,11 +69,36 @@ const PresidentCalendar = () => {
       logApiResponse(res);
       if (res.status === 409) return // not connected yet
       const data = await res.json()
-      setEvents(data)
+      if (Array.isArray(data)) {
+        setEvents(data)
+      } else if (Array.isArray(data?.events)) {
+        setEvents(data.events)
+      } else {
+        setEvents([])
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchArchivedEvents = async () => {
+    try {
+      const res = await fetch(`/api/president/calendar/events/archived?userId=${user._id}`)
+      logApiResponse(res);
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setArchivedEvents(data)
+        } else if (Array.isArray(data?.events)) {
+          setArchivedEvents(data.events)
+        } else {
+          setArchivedEvents([])
+        }
+      }
+    } catch (e) {
+      console.error(e)
     }
   }
 
@@ -141,11 +168,12 @@ const PresidentCalendar = () => {
       logApiResponse(res);
       if (res.ok) {
         fetchEvents()
+        fetchArchivedEvents()
       } else {
         // Handle error response - safely parse JSON
         const contentType = res.headers.get('content-type')
         const isJson = contentType && contentType.includes('application/json')
-        
+
         if (isJson) {
           const text = await res.text()
           if (text.trim()) {
@@ -164,6 +192,79 @@ const PresidentCalendar = () => {
       }
     } catch (e) {
       setError('Failed to archive event: ' + e.message)
+    }
+  }
+
+  const handleRestoreClick = async (eventId, eventTitle) => {
+    if (!window.confirm(`Are you sure you want to restore "${eventTitle || 'this event'}"?`)) {
+      return
+    }
+    try {
+      setError(null)
+      const res = await fetch(`/api/president/calendar/events/${eventId}/restore?userId=${user._id}`, { method: 'PUT' })
+      logApiResponse(res);
+      if (res.ok) {
+        fetchEvents()
+        fetchArchivedEvents()
+      } else {
+        // Handle error response - safely parse JSON
+        const contentType = res.headers.get('content-type')
+        const isJson = contentType && contentType.includes('application/json')
+
+        if (isJson) {
+          const text = await res.text()
+          if (text.trim()) {
+            try {
+              const data = JSON.parse(text)
+              setError(data.message || 'Failed to restore event')
+            } catch (parseError) {
+              setError(`Failed to restore event (${res.status}): Invalid response from server`)
+            }
+          } else {
+            setError(`Failed to restore event (${res.status}): Empty response from server`)
+          }
+        } else {
+          setError(`Failed to restore event (${res.status}): Server returned an error`)
+        }
+      }
+    } catch (e) {
+      setError('Failed to restore event: ' + e.message)
+    }
+  }
+
+  const handleDeleteClick = async (eventId, eventTitle) => {
+    if (!window.confirm(`Are you sure you want to permanently delete "${eventTitle || 'this event'}"? This action cannot be undone.`)) {
+      return
+    }
+    try {
+      setError(null)
+      const res = await fetch(`/api/president/calendar/events/${eventId}?userId=${user._id}`, { method: 'DELETE' })
+      logApiResponse(res);
+      if (res.ok) {
+        fetchArchivedEvents()
+      } else {
+        // Handle error response - safely parse JSON
+        const contentType = res.headers.get('content-type')
+        const isJson = contentType && contentType.includes('application/json')
+
+        if (isJson) {
+          const text = await res.text()
+          if (text.trim()) {
+            try {
+              const data = JSON.parse(text)
+              setError(data.message || 'Failed to delete event')
+            } catch (parseError) {
+              setError(`Failed to delete event (${res.status}): Invalid response from server`)
+            }
+          } else {
+            setError(`Failed to delete event (${res.status}): Empty response from server`)
+          }
+        } else {
+          setError(`Failed to delete event (${res.status}): Server returned an error`)
+        }
+      }
+    } catch (e) {
+      setError('Failed to delete event: ' + e.message)
     }
   }
 
@@ -214,7 +315,7 @@ const PresidentCalendar = () => {
           <button onClick={connectGoogle} className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700'>
             Connect Google Calendar
           </button>
-          <button onClick={fetchEvents} className='ml-2 bg-gray-200 text-blue-950 px-4 py-2 rounded hover:bg-gray-300'>
+          <button onClick={() => { fetchEvents(); fetchArchivedEvents(); }} className='ml-2 bg-gray-200 text-blue-950 px-4 py-2 rounded hover:bg-gray-300'>
             Refresh Events
           </button>
         </div>
@@ -268,7 +369,7 @@ const PresidentCalendar = () => {
           </div>
         )}
 
-        <div className='border rounded'>
+        <div className='border rounded mb-8'>
           <div className='p-4 border-b font-semibold text-black'>Upcoming Events {loading && '(loading...)'}</div>
           <ul>
             {events.map(ev => (
@@ -276,7 +377,7 @@ const PresidentCalendar = () => {
                 <div className='flex-1'>
                   <div className='font-medium'>{ev.summary || '(No title)'}</div>
                   <div className='text-sm text-gray-600'>
-                    {ev.start?.dateTime ? formatEventDateTime(ev.start.dateTime) : ev.start?.date || ''} 
+                    {ev.start?.dateTime ? formatEventDateTime(ev.start.dateTime) : ev.start?.date || ''}
                     {ev.start?.dateTime && ev.end?.dateTime && ' — '}
                     {ev.end?.dateTime ? formatEventDateTime(ev.end.dateTime) : ev.end?.date || ''}
                   </div>
@@ -293,6 +394,44 @@ const PresidentCalendar = () => {
             ))}
             {events.length === 0 && (
               <li className='p-4 text-gray-500'>No upcoming events or calendar not connected.</li>
+            )}
+          </ul>
+        </div>
+
+        <div className='border rounded'>
+          <div className='p-4 border-b font-semibold text-black'>Archived Events</div>
+          <ul>
+            {archivedEvents.map(ev => (
+              <li key={ev._id} className='p-4 border-b flex items-center justify-between text-black'>
+                <div className='flex-1'>
+                  <div className='font-medium'>{ev.summary || '(No title)'}</div>
+                  <div className='text-sm text-gray-600'>
+                    {ev.start ? formatEventDateTime(ev.start) : ''}
+                    {ev.start && ev.end && ' — '}
+                    {ev.end ? formatEventDateTime(ev.end) : ''}
+                  </div>
+                  <div className='text-xs text-gray-500'>
+                    Archived on {ev.archivedAt ? formatEventDateTime(ev.archivedAt) : 'Unknown'}
+                  </div>
+                </div>
+                <div className='flex space-x-2'>
+                  <button
+                    onClick={() => handleRestoreClick(ev.googleEventId, ev.summary)}
+                    className='px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700'
+                  >
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => handleDeleteClick(ev.googleEventId, ev.summary)}
+                    className='px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700'
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+            {archivedEvents.length === 0 && (
+              <li className='p-4 text-gray-500'>No archived events.</li>
             )}
           </ul>
         </div>

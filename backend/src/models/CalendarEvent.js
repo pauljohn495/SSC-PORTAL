@@ -9,7 +9,9 @@ const calendarEventSchema = new mongoose.Schema({
   end: Date,
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   archived: { type: Boolean, default: false },
-  archivedAt: Date
+  archivedAt: Date,
+  deleted: { type: Boolean, default: false },
+  deletedAt: Date
 }, { timestamps: true });
 
 const CalendarEvent = mongoose.model('CalendarEvent', calendarEventSchema);

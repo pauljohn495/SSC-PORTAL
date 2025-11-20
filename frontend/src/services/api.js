@@ -81,12 +81,21 @@ export const adminAPI = {
   deleteUser: (userId) => apiRequest(`/admin/users/${userId}`, {
     method: 'DELETE',
   }),
+  restoreUser: (userId) => apiRequest(`/admin/users/${userId}/restore`, {
+    method: 'PUT',
+  }),
   getHandbooks: () => apiRequest('/admin/handbook'),
   updateHandbookStatus: (id, status) => apiRequest(`/admin/handbook/${id}`, {
     method: 'PUT',
     body: { status },
   }),
   deleteHandbook: (id) => apiRequest(`/admin/handbook/${id}`, {
+    method: 'DELETE',
+  }),
+  restoreHandbook: (id) => apiRequest(`/admin/handbook/${id}/restore`, {
+    method: 'PUT',
+  }),
+  deleteHandbookPermanent: (id) => apiRequest(`/admin/handbook/${id}/permanent`, {
     method: 'DELETE',
   }),
   getMemorandums: () => apiRequest('/admin/memorandums'),
@@ -97,7 +106,14 @@ export const adminAPI = {
   deleteMemorandum: (id) => apiRequest(`/admin/memorandums/${id}`, {
     method: 'DELETE',
   }),
+  restoreMemorandum: (id) => apiRequest(`/admin/memorandums/${id}/restore`, {
+    method: 'PUT',
+  }),
+  deleteMemorandumPermanent: (id) => apiRequest(`/admin/memorandums/${id}/permanent`, {
+    method: 'DELETE',
+  }),
   getActivityLogs: () => apiRequest('/admin/activity-logs'),
+  getArchivedItems: () => apiRequest('/admin/archived'),
 };
 
 // President API

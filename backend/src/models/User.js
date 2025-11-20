@@ -25,6 +25,14 @@ const userSchema = new mongoose.Schema({
     scope: String,
     tokenType: String,
     expiryDate: Number
+  },
+  // Google Drive OAuth tokens (only for president role)
+  googleDrive: {
+    accessToken: String,
+    refreshToken: String,
+    scope: String,
+    tokenType: String,
+    expiryDate: Number
   }
 }, { timestamps: true });
 

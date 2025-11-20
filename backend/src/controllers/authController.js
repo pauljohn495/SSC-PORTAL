@@ -109,7 +109,8 @@ const buildUserResponse = (user) => ({
   course: user.course || null,
   profileCompleted: typeof user.profileCompleted === 'boolean'
     ? user.profileCompleted
-    : Boolean(user.department && user.course)
+    : Boolean(user.department && user.course),
+  googleDriveConnected: Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken)
 });
 
 // Verify reCAPTCHA token

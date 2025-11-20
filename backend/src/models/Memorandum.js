@@ -9,6 +9,8 @@ const memorandumSchema = new mongoose.Schema({
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   uploadedAt: { type: Date, default: Date.now },
+  archived: { type: Boolean, default: false },
+  archivedAt: { type: Date },
   // Priority-based editing fields
   priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   priorityEditStartedAt: { type: Date },

@@ -6,10 +6,15 @@ const handbookSchema = new mongoose.Schema({
   fileName: { type: String, default: '' },
   pdfContent: { type: String, default: '' }, // Extracted text content from PDF
   pageNumber: { type: Number }, // Optional, kept for backward compatibility with old handbooks
+  // Google Drive fields
+  googleDriveFileId: { type: String }, // Google Drive file ID
+  googleDrivePreviewUrl: { type: String }, // Google Drive preview URL for PDF viewer
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  archived: { type: Boolean, default: false },
+  archivedAt: { type: Date },
   // Priority-based editing fields
   priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   priorityEditStartedAt: { type: Date },

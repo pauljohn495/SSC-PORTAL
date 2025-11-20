@@ -216,6 +216,7 @@ const ManageUsers = () => {
           <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
           <li><Link to="/manage-users" className="block py-2 px-4 bg-blue-800 rounded transition">Manage User</Link></li>
           <li><Link to="/activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
+          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Archived</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
@@ -342,17 +343,19 @@ const ManageUsers = () => {
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600'>
                             <p><span className='font-medium'>Fullname:</span> {user.name || <span className='italic text-gray-400'>Not set</span>}</p>
                             <p><span className='font-medium'>Email:</span> {user.email}</p>
+                            <p><span className='font-medium'>Department:</span> {user.department || <span className='italic text-gray-400'>Not set</span>}</p>
+                            <p><span className='font-medium'>Course:</span> {user.course || <span className='italic text-gray-400'>Not set</span>}</p>
                           </div>
                         </div>
 
                         <button
                           onClick={() => handleArchiveUser(user._id)}
-                          className='ml-4 text-orange-500 hover:text-orange-700 transition-colors p-2'
+                          className='ml-4 text-gray-400 hover:text-orange-600 transition-colors p-2'
                           title='Archive user'
                         >
-                      <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' />
-                      </svg>
+                          <svg className='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' />
+                          </svg>
                         </button>
                         
                       </div>

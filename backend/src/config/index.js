@@ -19,7 +19,8 @@ export const config = {
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     redirectUri: process.env.GOOGLE_REDIRECT_URI,
-    calendarId: process.env.GOOGLE_CALENDAR_ID // optional; defaults to primary
+    calendarId: process.env.GOOGLE_CALENDAR_ID, // optional; defaults to primary
+    driveFolderId: process.env.GOOGLE_DRIVE_FOLDER_ID // optional; folder ID for handbook uploads
   },
   algolia: {
     appId: process.env.ALGOLIA_APP_ID,

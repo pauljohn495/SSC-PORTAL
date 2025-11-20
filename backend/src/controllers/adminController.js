@@ -536,10 +536,70 @@ export const archiveUser = async (req, res, next) => {
   }
 };
 
+export const restoreUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+
+    if (!user) {
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/restore`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (!user.archived) {
+      const response = { message: 'User is not archived' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/restore`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    user.archived = false;
+    user.archivedAt = null;
+    await user.save();
+
+    await logActivity('system_admin', 'user_restore', `User restored: ${user.email}`, {
+      restoredUserEmail: user.email,
+      restoredUserName: user.name
+    }, req);
+
+    const response = { message: 'User restored successfully', user };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/users/${id}/restore`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+
+    if (!user) {
+      const response = { message: 'User not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    await User.findByIdAndDelete(id);
+
+    await logActivity('system_admin', 'user_delete', `User deleted permanently: ${user.email}`, {
+      deletedUserEmail: user.email,
+      deletedUserName: user.name
+    }, req);
+
+    const response = { message: 'User deleted permanently' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/users/${id}`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get all handbooks
 export const getHandbooks = async (req, res, next) => {
   try {
-    const handbooks = await Handbook.find()
+    const handbooks = await Handbook.find({ archived: { $ne: true } })
       .populate('createdBy')
       .populate('priorityEditor')
       .populate('editedBy')
@@ -698,13 +758,9 @@ export const deleteHandbook = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    // Delete file from filesystem if it's a file path (not base64)
-    if (handbook.fileUrl && !handbook.fileUrl.startsWith('data:')) {
-      const { deletePDFFile } = await import('../utils/fileStorage.js');
-      deletePDFFile(handbook.fileUrl);
-    }
-
-    await Handbook.findByIdAndDelete(id);
+    handbook.archived = true;
+    handbook.archivedAt = new Date();
+    await handbook.save();
 
     try {
       await removeFromAlgolia(id.toString());
@@ -712,13 +768,103 @@ export const deleteHandbook = async (req, res, next) => {
       console.error('Algolia delete (handbook) failed:', algoliaError);
     }
 
-    await logActivity('system_admin', 'handbook_delete', `Handbook deleted: ${handbook.fileName || handbook._id}`, { 
+    await logActivity('system_admin', 'handbook_archive', `Handbook archived: ${handbook.fileName || handbook._id}`, { 
       handbookId: id, 
       fileName: handbook.fileName
     }, req);
 
-    const response = { message: 'Handbook deleted successfully' };
+    const response = { message: 'Handbook archived successfully' };
     logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreHandbook = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const handbook = await Handbook.findById(id);
+
+    if (!handbook) {
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}/restore`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (!handbook.archived) {
+      const response = { message: 'Handbook is not archived' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}/restore`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    handbook.archived = false;
+    handbook.archivedAt = null;
+    await handbook.save();
+
+    try {
+      await saveHandbookToAlgolia(handbook);
+    } catch (algoliaError) {
+      console.error('Algolia sync (handbook restore) failed:', algoliaError);
+    }
+
+    await logActivity('system_admin', 'handbook_restore', `Handbook restored: ${handbook.fileName || handbook._id}`, {
+      handbookId: id,
+      fileName: handbook.fileName
+    }, req);
+
+    const response = { message: 'Handbook restored successfully', handbook };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/handbook/${id}/restore`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const permanentlyDeleteHandbook = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const handbook = await Handbook.findById(id);
+
+    if (!handbook) {
+      const response = { message: 'Handbook not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}/permanent`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (handbook.fileUrl && !handbook.fileUrl.startsWith('data:')) {
+      try {
+        const { deletePDFFile } = await import('../utils/fileStorage.js');
+        await deletePDFFile(handbook.fileUrl);
+      } catch (fileError) {
+        console.warn(`Could not delete PDF file ${handbook.fileUrl}:`, fileError.message);
+      }
+    }
+
+    if (handbook.googleDriveFileId && handbook.createdBy) {
+      try {
+        const { deleteFileFromDrive } = await import('../utils/googleDrive.js');
+        await deleteFileFromDrive(handbook.googleDriveFileId, handbook.createdBy.toString());
+      } catch (error) {
+        console.warn(`Could not delete Google Drive file ${handbook.googleDriveFileId}:`, error.message);
+      }
+    }
+
+    await Handbook.findByIdAndDelete(id);
+
+    try {
+      await removeFromAlgolia(id.toString());
+    } catch (algoliaError) {
+      console.error('Algolia delete (handbook permanent) failed:', algoliaError);
+    }
+
+    await logActivity('system_admin', 'handbook_delete', `Handbook deleted permanently: ${handbook.fileName || handbook._id}`, {
+      handbookId: id,
+      fileName: handbook.fileName
+    }, req);
+
+    const response = { message: 'Handbook deleted permanently' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}/permanent`, 200, response);
     res.json(response);
   } catch (error) {
     next(error);
@@ -728,7 +874,7 @@ export const deleteHandbook = async (req, res, next) => {
 // Get all memorandums
 export const getMemorandums = async (req, res, next) => {
   try {
-    const memorandums = await Memorandum.find()
+    const memorandums = await Memorandum.find({ archived: { $ne: true } })
       .populate('createdBy')
       .populate('priorityEditor')
       .populate('editedBy')
@@ -799,7 +945,9 @@ export const deleteMemorandum = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    await Memorandum.findByIdAndDelete(id);
+    memorandum.archived = true;
+    memorandum.archivedAt = new Date();
+    await memorandum.save();
 
     try {
       await removeFromAlgolia(id.toString());
@@ -807,13 +955,85 @@ export const deleteMemorandum = async (req, res, next) => {
       console.error('Algolia delete (memorandum) failed:', algoliaError);
     }
 
-    await logActivity('system_admin', 'memorandum_delete', `Memorandum deleted: "${memorandum.title}"`, { 
+    await logActivity('system_admin', 'memorandum_archive', `Memorandum archived: "${memorandum.title}"`, { 
       memorandumId: id, 
       title: memorandum.title 
     }, req);
 
-    const response = { message: 'Memorandum deleted successfully' };
+    const response = { message: 'Memorandum archived successfully' };
     logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreMemorandum = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const memorandum = await Memorandum.findById(id);
+
+    if (!memorandum) {
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}/restore`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (!memorandum.archived) {
+      const response = { message: 'Memorandum is not archived' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}/restore`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    memorandum.archived = false;
+    memorandum.archivedAt = null;
+    await memorandum.save();
+
+    try {
+      await saveMemorandumToAlgolia(memorandum);
+    } catch (algoliaError) {
+      console.error('Algolia sync (memorandum restore) failed:', algoliaError);
+    }
+
+    await logActivity('system_admin', 'memorandum_restore', `Memorandum restored: "${memorandum.title}"`, {
+      memorandumId: id,
+      title: memorandum.title
+    }, req);
+
+    const response = { message: 'Memorandum restored successfully', memorandum };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}/restore`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const permanentlyDeleteMemorandum = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const memorandum = await Memorandum.findById(id);
+
+    if (!memorandum) {
+      const response = { message: 'Memorandum not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}/permanent`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    await Memorandum.findByIdAndDelete(id);
+
+    try {
+      await removeFromAlgolia(id.toString());
+    } catch (algoliaError) {
+      console.error('Algolia delete (memorandum permanent) failed:', algoliaError);
+    }
+
+    await logActivity('system_admin', 'memorandum_delete', `Memorandum deleted permanently: "${memorandum.title}"`, {
+      memorandumId: id,
+      title: memorandum.title
+    }, req);
+
+    const response = { message: 'Memorandum deleted permanently' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}/permanent`, 200, response);
     res.json(response);
   } catch (error) {
     next(error);
@@ -829,6 +1049,22 @@ export const getActivityLogs = async (req, res, next) => {
       .limit(1000);
     logAndSetHeader(req, res, 'GET', '/api/admin/activity-logs', 200, logs);
     res.json(logs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getArchivedItems = async (req, res, next) => {
+  try {
+    const [handbooks, memorandums, users] = await Promise.all([
+      Handbook.find({ archived: true }).populate('createdBy').sort({ archivedAt: -1 }),
+      Memorandum.find({ archived: true }).populate('createdBy').sort({ archivedAt: -1 }),
+      User.find({ archived: true }).sort({ archivedAt: -1 })
+    ]);
+
+    const response = { handbooks, memorandums, users };
+    logAndSetHeader(req, res, 'GET', '/api/admin/archived', 200, response);
+    res.json(response);
   } catch (error) {
     next(error);
   }
