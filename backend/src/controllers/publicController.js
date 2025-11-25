@@ -208,3 +208,62 @@ export const downloadHandbookPage = async (req, res, next) => {
   }
 };
 
+const fetchPdfBufferFromUrl = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download PDF (${response.status})`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+};
+
+export const streamHandbookFile = async (req, res, next) => {
+  try {
+    const { handbookId } = req.params;
+    if (!handbookId) {
+      return res.status(400).json({ message: 'Handbook ID is required' });
+    }
+
+    const handbook = await Handbook.findById(handbookId);
+    if (!handbook) {
+      return res.status(404).json({ message: 'Handbook not found' });
+    }
+
+    if (handbook.status !== 'approved' || handbook.archived) {
+      return res.status(403).json({ message: 'Handbook is not available' });
+    }
+
+    let pdfBuffer = null;
+
+    const fallbackFileName = handbook.fileName || 'student-handbook.pdf';
+
+    if (handbook.googleDriveFileId) {
+      const downloadUrl = `https://drive.google.com/uc?export=download&id=${handbook.googleDriveFileId}`;
+      pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
+    } else if (handbook.googleDrivePreviewUrl) {
+      pdfBuffer = await fetchPdfBufferFromUrl(handbook.googleDrivePreviewUrl);
+    } else if (handbook.fileUrl) {
+      if (handbook.fileUrl.startsWith('data:')) {
+        const base64Data = handbook.fileUrl.split(',')[1];
+        pdfBuffer = Buffer.from(base64Data, 'base64');
+      } else if (handbook.fileUrl.startsWith('http')) {
+        pdfBuffer = await fetchPdfBufferFromUrl(handbook.fileUrl);
+      } else {
+        pdfBuffer = readPDFFromFile(handbook.fileUrl);
+      }
+    }
+
+    if (!pdfBuffer) {
+      return res.status(404).json({ message: 'Handbook PDF not available' });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error streaming handbook file:', error);
+    return next(error);
+  }
+};
+

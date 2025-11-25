@@ -3,24 +3,151 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
 import Swal from 'sweetalert2'
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
+const DRIVE_PREVIEW_BASE = 'https://drive.google.com/file/d'
+
+GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 const StudentHandbook = () => {
   const [menuOpen, setMenuOpen] = useState(false)
   const [handbookPages, setHandbookPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
-  const [pdfError, setPdfError] = useState(null)
-  const [pdfLoaded, setPdfLoaded] = useState(false)
+  const [handbookError, setHandbookError] = useState('')
+  const [pdfArrayBuffer, setPdfArrayBuffer] = useState(null)
+  const [pdfDoc, setPdfDoc] = useState(null)
+  const [pdfSearchLoading, setPdfSearchLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
+  const [isSearching, setIsSearching] = useState(false)
+  const [viewerPage, setViewerPage] = useState(1)
+  const [renderingPage, setRenderingPage] = useState(false)
+  const [renderScale, setRenderScale] = useState(1)
+  const [renderError, setRenderError] = useState('')
+  const [containerWidth, setContainerWidth] = useState(0)
+  const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 })
+  const pdfLoadingTaskRef = useRef(null)
+  const textLayerCacheRef = useRef(new Map())
   const downloadMenuRef = useRef(null)
-  const pdfIframeRef = useRef(null)
-  const { logout, user, loading: authLoading } = useAuth()
+  const canvasRef = useRef(null)
+  const canvasContainerRef = useRef(null)
+  const authContext = useAuth()
+  const logout = authContext?.logout
+  const user = authContext?.user
+  const authLoading = authContext?.loading ?? true
   const navigate = useNavigate()
+  
+  const resolveHandbookFileUrl = useCallback((handbook) => {
+    if (!handbook) return ''
+    if (handbook._id) {
+      return `${API_BASE_URL}/handbook/${handbook._id}/file`
+    }
+    if (handbook.fileUrl) {
+      if (handbook.fileUrl.startsWith('data:') || handbook.fileUrl.startsWith('http')) {
+        return handbook.fileUrl
+      }
+      return `http://localhost:5001/${handbook.fileUrl}`
+    }
+    return ''
+  }, [])
+
+  const resolveViewerUrl = useCallback((handbook) => {
+    if (!handbook) return ''
+    if (handbook.googleDriveFileId) {
+      return `${DRIVE_PREVIEW_BASE}/${handbook.googleDriveFileId}/preview`
+    }
+    if (handbook.googleDrivePreviewUrl) {
+      return handbook.googleDrivePreviewUrl
+    }
+    if (handbook.fileUrl) {
+      let absoluteUrl = handbook.fileUrl
+      if (!handbook.fileUrl.startsWith('http') && !handbook.fileUrl.startsWith('https')) {
+        absoluteUrl = `http://localhost:5001/${handbook.fileUrl}`
+      }
+      return `https://drive.google.com/viewerng/viewer?embedded=true&url=${encodeURIComponent(absoluteUrl)}`
+    }
+    return ''
+  }, [])
+
+  // Get the current handbook (should be only one)
+  const currentHandbook = handbookPages && Array.isArray(handbookPages) && handbookPages.length > 0 ? handbookPages[0] : null
+
+  const searchFileUrl = useMemo(
+    () => resolveHandbookFileUrl(currentHandbook),
+    [currentHandbook, resolveHandbookFileUrl]
+  )
+
+  const viewerUrl = useMemo(
+    () => resolveViewerUrl(currentHandbook),
+    [currentHandbook, resolveViewerUrl]
+  )
+
+  const viewerSrc = useMemo(() => {
+    if (!viewerUrl) return ''
+    if (!viewerPage) return viewerUrl
+    const separator = viewerUrl.includes('?') ? '&' : '?'
+    return `${viewerUrl}${separator}page=${viewerPage}`
+  }, [viewerUrl, viewerPage])
+
+  const currentMatch = useMemo(() => {
+    if (currentMatchIndex < 0 || currentMatchIndex >= searchResults.length) return null
+    return searchResults[currentMatchIndex]
+  }, [currentMatchIndex, searchResults])
+
+  const pageHighlights = useMemo(() => {
+    if (!searchResults.length || !viewerPage) return []
+    return searchResults.filter((match) => match.pageIndex === viewerPage - 1)
+  }, [searchResults, viewerPage])
+
+  // Fetch PDF ArrayBuffer for search (viewer streams directly from API)
+  useEffect(() => {
+    let isCancelled = false
+    if (!searchFileUrl) {
+      setPdfArrayBuffer(null)
+      setPdfDoc(null)
+      return
+    }
+
+    const fetchPdfData = async () => {
+      try {
+        setPdfSearchLoading(true)
+        setHandbookError('')
+        const response = await fetch(searchFileUrl)
+        if (!response.ok) {
+          throw new Error(`Failed to fetch PDF: ${response.statusText}`)
+        }
+        const arrayBuffer = await response.arrayBuffer()
+        if (isCancelled) return
+        setPdfArrayBuffer(arrayBuffer)
+      } catch (error) {
+        if (isCancelled) return
+        console.error('Error fetching PDF:', error)
+        setHandbookError(`Failed to load PDF: ${error.message}`)
+        setPdfArrayBuffer(null)
+      } finally {
+        if (!isCancelled) {
+          setPdfSearchLoading(false)
+        }
+      }
+    }
+
+    fetchPdfData()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [searchFileUrl])
 
   // Define fetchHandbook using useCallback so it can be used in useEffect
   const fetchHandbook = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch('http://localhost:5001/api/handbook')
+      setHandbookError('')
+        const response = await fetch('http://localhost:5001/api/handbook')
       
       if (!response.ok) {
         throw new Error(`Failed to fetch handbook: ${response.statusText}`)
@@ -28,6 +155,13 @@ const StudentHandbook = () => {
       
       const data = await response.json()
       console.log('Fetched handbook data:', data) // Debug log
+      
+      // Ensure data is an array
+      if (!Array.isArray(data)) {
+        console.error('Expected array but got:', typeof data, data)
+        setHandbookPages([])
+        return
+      }
       
       // Get the first approved handbook (should only be one now)
       const approvedHandbooks = data.filter(h => h.status === 'approved')
@@ -38,7 +172,7 @@ const StudentHandbook = () => {
       setHandbookPages(approvedHandbooks)
     } catch (error) {
       console.error('Error fetching handbook:', error)
-      setPdfError(`Failed to load handbook: ${error.message}`)
+      setHandbookError(`Failed to load handbook: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -57,13 +191,66 @@ const StudentHandbook = () => {
     }
   }, [user, fetchHandbook])
 
-  // Get the current handbook (should be only one)
-  const currentHandbook = handbookPages.length > 0 ? handbookPages[0] : null
-
-  // Reset PDF loaded state when handbook changes
   useEffect(() => {
-    setPdfLoaded(false)
-  }, [currentHandbook?._id])
+    textLayerCacheRef.current = new Map()
+    setSearchResults([])
+    setCurrentMatchIndex(-1)
+    if (!pdfArrayBuffer) {
+      setPdfDoc(null)
+      return
+    }
+
+    const loadingTask = getDocument({ data: pdfArrayBuffer })
+    pdfLoadingTaskRef.current = loadingTask
+
+    loadingTask.promise
+      .then((doc) => {
+        setPdfDoc(doc)
+      })
+      .catch((error) => {
+        console.error('Error loading PDF document:', error)
+        setHandbookError((prev) => prev || `Failed to prepare PDF for search: ${error.message}`)
+        setPdfDoc(null)
+      })
+
+    return () => {
+      loadingTask.destroy()
+      if (pdfLoadingTaskRef.current === loadingTask) {
+        pdfLoadingTaskRef.current = null
+      }
+    }
+  }, [pdfArrayBuffer])
+
+  useEffect(() => {
+    const element = canvasContainerRef.current
+    if (!element) return
+    const updateSize = () => {
+      setContainerWidth(element.clientWidth || 0)
+    }
+    updateSize()
+    let resizeObserver = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(updateSize)
+      resizeObserver.observe(element)
+    }
+    window.addEventListener('resize', updateSize)
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
+      window.removeEventListener('resize', updateSize)
+    }
+  }, [pdfDoc])
+
+  useEffect(() => {
+    if (!searchResults.length) {
+      setCurrentMatchIndex(-1)
+      return
+    }
+    if (currentMatchIndex >= searchResults.length) {
+      setCurrentMatchIndex(searchResults.length - 1)
+    }
+  }, [currentMatchIndex, searchResults])
 
   // Close download menu when clicking outside
   useEffect(() => {
@@ -79,70 +266,169 @@ const StudentHandbook = () => {
     }
   }, [])
 
-
   const toggleMenu = () => {
     setMenuOpen(!menuOpen)
   }
 
   const handleLogout = () => {
-    logout()
+    if (logout) {
+      logout()
+    }
     navigate('/login')
   }
 
-  const getHandbookPreviewUrl = useCallback((handbook) => {
-    if (!handbook) return ''
-    if (handbook.googleDrivePreviewUrl) return handbook.googleDrivePreviewUrl
-    if (handbook.googleDriveFileId) {
-      return `https://drive.google.com/file/d/${handbook.googleDriveFileId}/preview`
-    }
-    if (handbook.fileUrl) {
-      return handbook.fileUrl.startsWith('data:') || handbook.fileUrl.startsWith('http')
-        ? handbook.fileUrl
-        : `http://localhost:5001/${handbook.fileUrl}`
-    }
-    return ''
-  }, [])
-
   const downloadHandbook = () => {
     if (!currentHandbook) return
+    const fileUrl = resolveHandbookFileUrl(currentHandbook)
 
-    // If Google Drive file ID exists, download from Google Drive
-    if (currentHandbook.googleDriveFileId) {
-      const downloadUrl = `https://drive.google.com/uc?export=download&id=${currentHandbook.googleDriveFileId}`
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = currentHandbook.fileName || 'Student-Handbook.pdf'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setDownloadMenuOpen(false)
+    if (!fileUrl) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'File Not Available',
+        text: 'Handbook file not available for download',
+        confirmButtonColor: '#2563eb'
+      })
       return
     }
 
-    // Fallback to old fileUrl if Google Drive not available
-    if (currentHandbook.fileUrl) {
       const link = document.createElement('a')
-      const fileUrl = currentHandbook.fileUrl.startsWith('data:') || currentHandbook.fileUrl.startsWith('http')
-        ? currentHandbook.fileUrl
-        : `http://localhost:5001/${currentHandbook.fileUrl}`
       link.href = fileUrl
       link.download = currentHandbook.fileName || 'Student-Handbook.pdf'
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       setDownloadMenuOpen(false)
+  }
+
+  const performSearch = useCallback(async () => {
+    if (!pdfDoc) {
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
       return
     }
 
-    Swal.fire({
-      icon: 'warning',
-      title: 'File Not Available',
-      text: 'Handbook file not available for download',
-      confirmButtonColor: '#2563eb'
-    })
-  }
+    const keyword = searchTerm.trim()
+    if (!keyword) {
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
+      return
+    }
 
-  const previewUrl = useMemo(() => getHandbookPreviewUrl(currentHandbook), [currentHandbook, getHandbookPreviewUrl])
+    setIsSearching(true)
+
+    try {
+      const normalizedKeyword = keyword.toLowerCase()
+      const pendingResults = []
+
+      for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
+        let cacheEntry = textLayerCacheRef.current.get(pageNumber)
+
+        if (!cacheEntry) {
+          const page = await pdfDoc.getPage(pageNumber)
+          const textContent = await page.getTextContent()
+          const viewport = page.getViewport({ scale: 1 })
+          cacheEntry = { items: textContent.items, viewport }
+          textLayerCacheRef.current.set(pageNumber, cacheEntry)
+        }
+
+        const { items, viewport } = cacheEntry
+
+        items.forEach((item, itemIndex) => {
+          if (!item?.str) return
+          const text = item.str
+          const lowerText = text.toLowerCase()
+          if (!lowerText.includes(normalizedKeyword)) return
+
+          const baseTransform = item.transform || [1, 0, 0, 1, 0, 0]
+          const baseWidth = (item.width || 0) / viewport.width
+          const baseHeight = Math.abs(item.height || baseTransform[3] || 0) / viewport.height
+          const originX = (baseTransform[4] || 0) / viewport.width
+          const baselineY = (baseTransform[5] || 0) / viewport.height
+          const topFromTop = 1 - baselineY
+          const normalizedHeight = Math.max(baseHeight, 0.008)
+
+          let startIndex = 0
+          const safeLength = text.length || normalizedKeyword.length
+
+          while (startIndex <= lowerText.length) {
+            const foundIndex = lowerText.indexOf(normalizedKeyword, startIndex)
+            if (foundIndex === -1) break
+
+            const proportion = safeLength ? foundIndex / safeLength : 0
+            const widthRatio = safeLength ? normalizedKeyword.length / safeLength : 1
+            const normalizedWidth = Math.max(baseWidth * widthRatio, 0.01)
+            const normalizedLeft = originX + baseWidth * proportion
+            const normalizedTop = Math.max(topFromTop - normalizedHeight, 0)
+
+            pendingResults.push({
+              id: `${pageNumber}-${itemIndex}-${foundIndex}`,
+              pageIndex: pageNumber - 1,
+              rect: {
+                x: normalizedLeft,
+                y: normalizedTop,
+                width: normalizedWidth,
+                height: normalizedHeight
+              },
+              snippet: text.trim() || text
+            })
+
+            startIndex = foundIndex + normalizedKeyword.length
+          }
+        })
+      }
+
+      setSearchResults(pendingResults)
+      setCurrentMatchIndex(pendingResults.length ? 0 : -1)
+    } catch (error) {
+      console.error('Error searching PDF:', error)
+      setHandbookError((prev) => prev || `Search failed: ${error.message}`)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [pdfDoc, searchTerm])
+
+  const handleSearchSubmit = useCallback((event) => {
+    event.preventDefault()
+    performSearch()
+  }, [performSearch])
+
+  const handleClearSearch = useCallback(() => {
+    setSearchTerm('')
+    setSearchResults([])
+    setCurrentMatchIndex(-1)
+  }, [])
+
+  const goToMatch = useCallback((direction) => {
+    if (!searchResults.length) return
+    setCurrentMatchIndex((prev) => {
+      if (prev === -1) return 0
+      const nextIndex = (prev + direction + searchResults.length) % searchResults.length
+      return nextIndex
+    })
+  }, [searchResults])
+
+  const goToPageManually = useCallback((direction) => {
+    if (!pdfDoc) return
+    setViewerPage((prev) => {
+      const next = prev + direction
+      if (next < 1 || next > pdfDoc.numPages) {
+        return prev
+      }
+      return next
+    })
+  }, [pdfDoc])
+
+  const handleZoomIn = useCallback(() => {
+    setRenderScale((prev) => Math.min(prev + 0.2, 3))
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setRenderScale((prev) => Math.max(prev - 0.2, 0.4))
+  }, [])
+
+  const handleZoomReset = useCallback(() => {
+    setRenderScale(1)
+  }, [])
 
   // Show loading or nothing while checking auth
   if (authLoading) {
@@ -156,6 +442,79 @@ const StudentHandbook = () => {
   if (!user) {
     return null
   }
+
+  useEffect(() => {
+    if (!currentHandbook) {
+      setViewerPage(1)
+    }
+  }, [currentHandbook])
+
+  useEffect(() => {
+    if (currentMatchIndex < 0 || currentMatchIndex >= searchResults.length) {
+      return
+    }
+
+    const activeMatch = searchResults[currentMatchIndex]
+    setViewerPage(activeMatch.pageIndex + 1)
+  }, [currentMatchIndex, searchResults])
+
+  useEffect(() => {
+    if (!pdfDoc) return
+    setViewerPage((prev) => {
+      const nextPage = prev || 1
+      const clamped = Math.min(Math.max(nextPage, 1), pdfDoc.numPages)
+      return clamped
+    })
+    setRenderError('')
+  }, [pdfDoc])
+
+  useEffect(() => {
+    if (!pdfDoc || !viewerPage || !canvasRef.current) return
+    let isCancelled = false
+    let renderTask = null
+    const renderPage = async () => {
+      setRenderingPage(true)
+      setRenderError('')
+      try {
+        const safePage = Math.min(Math.max(viewerPage, 1), pdfDoc.numPages)
+        if (safePage !== viewerPage) {
+          setViewerPage(safePage)
+          return
+        }
+        const page = await pdfDoc.getPage(safePage)
+        const baseViewport = page.getViewport({ scale: 1 })
+        const widthToUse = containerWidth || baseViewport.width
+        const scale = Math.max((widthToUse / baseViewport.width) * renderScale, 0.2)
+        const viewport = page.getViewport({ scale })
+        const canvas = canvasRef.current
+        const context = canvas.getContext('2d')
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        renderTask = page.render({ canvasContext: context, viewport })
+        await renderTask.promise
+        if (!isCancelled) {
+          setCanvasDimensions({ width: viewport.width, height: viewport.height })
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Error rendering PDF page:', error)
+          setRenderError('Failed to render handbook page.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setRenderingPage(false)
+        }
+      }
+    }
+    renderPage()
+    return () => {
+      isCancelled = true
+      if (renderTask?.cancel) {
+        renderTask.cancel()
+      }
+    }
+  }, [pdfDoc, viewerPage, renderScale, containerWidth])
 
   return (
     <div className='bg-white min-h-screen'>
@@ -209,8 +568,8 @@ const StudentHandbook = () => {
       )}
 
       {/* Main Content */}
-      <main className='p-8'>
-        <div className='max-w-4xl mx-auto relative'>
+      <main className='p-6 md:p-8'>
+        <div className='max-w-6xl mx-auto relative'>
           <div className='flex justify-between items-center mb-6'>
             <div className='flex-1'></div>
             <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>STUDENT HANDBOOK</h1>
@@ -252,48 +611,204 @@ const StudentHandbook = () => {
               </p>
             </div>
           ) : (
-            <>
-              {/* Handbook Display */}
-              <div className='bg-gray-100 p-8 rounded-lg shadow-md min-h-[400px] mb-6'>
-                {previewUrl ? (
-                  <div className='w-full rounded-lg overflow-hidden bg-black' style={{ minHeight: '800px' }}>
-                    <div className='bg-black'>
-                      {pdfError ? (
-                        <div className='text-center py-12 bg-red-50 rounded-lg m-4'>
-                          <p className='text-red-600 mb-4'>Error loading PDF: {pdfError}</p>
-                          <button
-                            onClick={() => {
-                              setPdfError(null)
-                              if (pdfIframeRef.current) {
-                                pdfIframeRef.current.src = previewUrl
-                              }
-                            }}
-                            className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700'
-                          >
-                            Retry
-                          </button>
-                        </div>
-                      ) : (
-                        <iframe
-                          ref={pdfIframeRef}
-                          src={previewUrl}
-                          className='w-full h-full border-0 rounded-b-lg'
-                          style={{ minHeight: '760px', height: '100vh', backgroundColor: '#202124' }}
-                          title={currentHandbook.fileName || 'Student Handbook'}
-                          onError={() => {
-                            console.error('PDF iframe error')
-                            setPdfError('Failed to load PDF from Google Drive. Please check if the file exists.')
-                          }}
-                          onLoad={() => {
-                            setPdfError(null)
-                            setPdfLoaded(true)
-                          }}
-                        />
-                      )}
+            <div className='space-y-6'>
+              {handbookError && (
+                <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg'>
+                  {handbookError}
+                </div>
+              )}
+
+              {pdfDoc && (
+                <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-4'>
+                  <form onSubmit={handleSearchSubmit} className='flex flex-col gap-3 lg:flex-row lg:items-center'>
+                    <input
+                      type='text'
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder='Search inside the handbook...'
+                      className='flex-1 rounded-lg border border-gray-300 px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500'
+                      disabled={!pdfDoc || pdfSearchLoading}
+                    />
+                    <div className='flex gap-2'>
+                      <button
+                        type='submit'
+                        className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300'
+                        disabled={!pdfDoc || pdfSearchLoading || isSearching || !searchTerm.trim()}
+                      >
+                        {isSearching ? 'Searching...' : 'Search'}
+                      </button>
+                      <button
+                        type='button'
+                        onClick={handleClearSearch}
+                        className='px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition disabled:bg-gray-50'
+                        disabled={!searchTerm && !searchResults.length}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className='flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600'>
+                    <span className='text-xs text-gray-500'>
+                      {pdfSearchLoading ? 'Preparing search index...' : pdfDoc ? 'Search ready' : 'Search unavailable'}
+                    </span>
+                    <span className='font-semibold text-gray-700'>
+                      {searchResults.length > 0
+                        ? `Match ${currentMatchIndex + 1} of ${searchResults.length}`
+                        : 'No matches yet'}
+                    </span>
+                    <div className='flex gap-2'>
+                      <button
+                        type='button'
+                        onClick={() => goToMatch(-1)}
+                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                        disabled={searchResults.length === 0}
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => goToMatch(1)}
+                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                        disabled={searchResults.length === 0}
+                      >
+                        Next
+                      </button>
                     </div>
                   </div>
-                ) : currentHandbook.content ? (
-                  <div className='prose max-w-none'>
+
+                  {searchResults.length > 0 && (
+                    <div className='max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100'>
+                      {searchResults.map((match, index) => (
+                        <button
+                          type='button'
+                          key={match.id}
+                          onClick={() => setCurrentMatchIndex(index)}
+                          className={`w-full text-left px-3 py-2 hover:bg-blue-50 transition ${
+                            currentMatchIndex === index ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className='flex items-center justify-between text-xs font-semibold text-gray-700'>
+                            <span>Page {match.pageIndex + 1}</span>
+                            {currentMatchIndex === index && <span className='text-blue-600'>Active</span>}
+                          </div>
+                          <p className='text-xs text-gray-500 truncate'>
+                            {match.snippet?.length > 120 ? `${match.snippet.slice(0, 117)}...` : match.snippet}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {pdfDoc ? (
+                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden'>
+                  <div className='flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4 text-sm text-gray-700'>
+                    <div className='font-semibold'>
+                      Page {viewerPage} of {pdfDoc?.numPages || '?'}
+                    </div>
+                    <div className='flex gap-2'>
+                      <button
+                        type='button'
+                        onClick={() => goToPageManually(-1)}
+                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                        disabled={viewerPage <= 1}
+                      >
+                        Prev Page
+                      </button>
+                      <button
+                        type='button'
+                        onClick={() => goToPageManually(1)}
+                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                        disabled={viewerPage >= (pdfDoc?.numPages || viewerPage)}
+                      >
+                        Next Page
+                      </button>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      <button
+                        type='button'
+                        onClick={handleZoomOut}
+                        className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
+                      >
+                        -
+                      </button>
+                      <span className='min-w-[48px] text-center font-semibold'>
+                        {Math.round(renderScale * 100)}%
+                      </span>
+                      <button
+                        type='button'
+                        onClick={handleZoomIn}
+                        className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
+                      >
+                        +
+                      </button>
+                      <button
+                        type='button'
+                        onClick={handleZoomReset}
+                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                  {renderError && (
+                    <div className='bg-red-50 text-red-700 border border-red-100 mx-4 mt-4 mb-2 rounded-lg px-4 py-2 text-sm'>
+                      {renderError}
+                    </div>
+                  )}
+                  <div
+                    ref={canvasContainerRef}
+                    className='bg-gray-50 flex justify-center overflow-auto p-4 min-h-[400px]'
+                  >
+                    <div className='relative inline-block shadow-lg rounded'>
+                      <canvas ref={canvasRef} className='bg-white rounded block' />
+                      {pageHighlights.map((highlight) => {
+                        const isActive = currentMatch?.id === highlight.id
+                        const width = canvasDimensions.width || 1
+                        const height = canvasDimensions.height || 1
+                        const style = {
+                          left: `${(highlight.rect.x || 0) * width}px`,
+                          top: `${(highlight.rect.y || 0) * height}px`,
+                          width: `${(highlight.rect.width || 0) * width}px`,
+                          height: `${(highlight.rect.height || 0) * height}px`,
+                        }
+                        return (
+                          <div
+                            key={highlight.id}
+                            className={`absolute border ${
+                              isActive
+                                ? 'bg-blue-500/30 border-blue-500'
+                                : 'bg-yellow-300/30 border-yellow-400'
+                            } pointer-events-none rounded-sm`}
+                            style={style}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                  {renderingPage && (
+                    <p className='text-center text-xs text-gray-500 pb-4'>Rendering page...</p>
+                  )}
+                </div>
+              ) : searchFileUrl ? (
+                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[400px] flex items-center justify-center'>
+                  <p className='text-gray-500 text-sm'>Preparing handbook viewer...</p>
+                </div>
+              ) : viewerUrl ? (
+                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[600px]'>
+                  <iframe
+                    key={`${viewerPage}-${viewerUrl}`}
+                    src={viewerSrc}
+                    title='Student Handbook Viewer'
+                    className='w-full h-[80vh]'
+                    allowFullScreen
+                    loading='lazy'
+                  />
+                </div>
+              ) : currentHandbook?.content ? (
+                <div className='bg-white rounded-lg shadow-md p-8 prose max-w-none'>
                     <div className='text-gray-700 leading-relaxed whitespace-pre-wrap text-base'>
                       {currentHandbook.content}
                     </div>
@@ -304,7 +819,6 @@ const StudentHandbook = () => {
                   </div>
                 )}
               </div>
-            </>
           )}
         </div>
       </main>
@@ -314,3 +828,4 @@ const StudentHandbook = () => {
 }
 
 export default StudentHandbook
+
