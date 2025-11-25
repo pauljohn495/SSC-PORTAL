@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { adminAPI } from '../services/api'
+import Swal from 'sweetalert2'
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -72,9 +73,18 @@ const Archived = () => {
     runAction(`handbook-restore-${id}`, () => adminAPI.restoreHandbook(id))
   }
 
-  const handleDeleteHandbook = (id) => {
-    if (!window.confirm('Permanently delete this handbook? This cannot be undone.')) {
-      return
+  const handleDeleteHandbook = async (id) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete Handbook',
+      text: 'Permanently delete this handbook? This cannot be undone.',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     runAction(`handbook-delete-${id}`, () => adminAPI.deleteHandbookPermanent(id))
   }
@@ -83,9 +93,18 @@ const Archived = () => {
     runAction(`memorandum-restore-${id}`, () => adminAPI.restoreMemorandum(id))
   }
 
-  const handleDeleteMemorandum = (id) => {
-    if (!window.confirm('Permanently delete this memorandum? This cannot be undone.')) {
-      return
+  const handleDeleteMemorandum = async (id) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete Memorandum',
+      text: 'Permanently delete this memorandum? This cannot be undone.',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     runAction(`memorandum-delete-${id}`, () => adminAPI.deleteMemorandumPermanent(id))
   }
@@ -94,9 +113,18 @@ const Archived = () => {
     runAction(`user-restore-${id}`, () => adminAPI.restoreUser(id))
   }
 
-  const handleDeleteUser = (id) => {
-    if (!window.confirm('Permanently delete this user? This cannot be undone.')) {
-      return
+  const handleDeleteUser = async (id) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete User',
+      text: 'Permanently delete this user? This cannot be undone.',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     runAction(`user-delete-${id}`, () => adminAPI.deleteUser(id))
   }

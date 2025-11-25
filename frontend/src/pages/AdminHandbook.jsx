@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Swal from 'sweetalert2';
 
 const AdminHandbook = () => {
   const { logout, user } = useAuth();
@@ -95,7 +96,16 @@ const AdminHandbook = () => {
   };
 
   const handleArchive = async (id) => {
-    if (!window.confirm('Are you sure you want to archive this handbook page?')) {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Archive Handbook',
+      text: 'Are you sure you want to archive this handbook page?',
+      showCancelButton: true,
+      confirmButtonColor: '#f97316',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, archive it'
+    });
+    if (!result.isConfirmed) {
       return;
     }
     try {

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import Swal from 'sweetalert2';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -100,7 +101,16 @@ const AdminMemorandum = () => {
   };
 
   const handleArchive = async (id) => {
-    if (!window.confirm('Are you sure you want to archive this memorandum?')) {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Archive Memorandum',
+      text: 'Are you sure you want to archive this memorandum?',
+      showCancelButton: true,
+      confirmButtonColor: '#f97316',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, archive it'
+    });
+    if (!result.isConfirmed) {
       return;
     }
     try {

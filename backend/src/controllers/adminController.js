@@ -9,6 +9,35 @@ import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 
+// Helper function to send email notification to president
+const notifyPresident = async (subject, content) => {
+  try {
+    const president = await User.findOne({ role: 'president', email: { $exists: true, $ne: null } });
+    if (!president || !president.email) {
+      console.warn('President not found or has no email address');
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: config.email.user || 'your-email@gmail.com',
+        pass: config.email.pass || 'your-app-password'
+      }
+    });
+
+    await transporter.sendMail({
+      from: config.email.user || 'your-email@gmail.com',
+      to: president.email,
+      subject: `[BUKSU SSC] ${subject}`,
+      html: content
+    });
+  } catch (emailError) {
+    console.error('Error sending email notification to president:', emailError);
+    // Continue even if email fails
+  }
+};
+
 // Helper function to create simplified log and set response header
 const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
   // Determine message based on response data and endpoint
@@ -736,6 +765,24 @@ export const updateHandbookStatus = async (req, res, next) => {
         fileName: handbook.fileName,
         status 
       }, req);
+
+      // Notify president via email
+      await notifyPresident(
+        'Handbook Rejected',
+        `
+          <h2>Handbook Rejected</h2>
+          <p>Dear President,</p>
+          <p>The administrator has rejected the following handbook:</p>
+          <ul>
+            <li><strong>File Name:</strong> ${handbook.fileName || handbook._id}</li>
+            <li><strong>Page Number:</strong> ${handbook.pageNumber || 'N/A'}</li>
+            <li><strong>Status:</strong> Rejected</li>
+            <li><strong>Rejected At:</strong> ${new Date().toLocaleString()}</li>
+          </ul>
+          <hr>
+          <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
+        `
+      );
     }
     
     const response = { message: `Handbook ${status} successfully`, handbook };
@@ -772,6 +819,23 @@ export const deleteHandbook = async (req, res, next) => {
       handbookId: id, 
       fileName: handbook.fileName
     }, req);
+
+    // Notify president via email
+    await notifyPresident(
+      'Handbook Deleted',
+      `
+        <h2>Handbook Deleted</h2>
+        <p>Dear President,</p>
+        <p>The administrator has deleted the following handbook:</p>
+        <ul>
+          <li><strong>File Name:</strong> ${handbook.fileName || handbook._id}</li>
+          <li><strong>Page Number:</strong> ${handbook.pageNumber || 'N/A'}</li>
+          <li><strong>Deleted At:</strong> ${new Date().toLocaleString()}</li>
+        </ul>
+        <hr>
+        <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
+      `
+    );
 
     const response = { message: 'Handbook archived successfully' };
     logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}`, 200, response);
@@ -925,6 +989,26 @@ export const updateMemorandumStatus = async (req, res, next) => {
         emitGlobal('memorandum:approved', { id: memorandum._id, title: memorandum.title });
       } catch (e) {}
     }
+
+    // If rejected, notify president via email
+    if (status === 'rejected') {
+      await notifyPresident(
+        'Memorandum Rejected',
+        `
+          <h2>Memorandum Rejected</h2>
+          <p>Dear President,</p>
+          <p>The administrator has rejected the following memorandum:</p>
+          <ul>
+            <li><strong>Title:</strong> ${memorandum.title}</li>
+            <li><strong>Status:</strong> Rejected</li>
+            <li><strong>Rejected At:</strong> ${new Date().toLocaleString()}</li>
+          </ul>
+          <hr>
+          <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
+        `
+      );
+    }
+
     const response = { message: `Memorandum ${status} successfully`, memorandum };
     logAndSetHeader(req, res, 'PUT', `/api/admin/memorandums/${id}`, 200, response);
     res.json(response);
@@ -959,6 +1043,22 @@ export const deleteMemorandum = async (req, res, next) => {
       memorandumId: id, 
       title: memorandum.title 
     }, req);
+
+    // Notify president via email
+    await notifyPresident(
+      'Memorandum Deleted',
+      `
+        <h2>Memorandum Deleted</h2>
+        <p>Dear President,</p>
+        <p>The administrator has deleted the following memorandum:</p>
+        <ul>
+          <li><strong>Title:</strong> ${memorandum.title}</li>
+          <li><strong>Deleted At:</strong> ${new Date().toLocaleString()}</li>
+        </ul>
+        <hr>
+        <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
+      `
+    );
 
     const response = { message: 'Memorandum archived successfully' };
     logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 200, response);

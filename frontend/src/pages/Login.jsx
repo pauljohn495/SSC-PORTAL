@@ -4,6 +4,7 @@ import {jwtDecode} from 'jwt-decode';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import ReCAPTCHA from 'react-google-recaptcha';
+import Swal from 'sweetalert2';
 import buksunew from '../assets/buksu-new.png'
 import bgimage from '../assets/bg-image.jpg'
 
@@ -30,7 +31,12 @@ const handleLoginsuccess = async (credentialResponse) => {
 
   // Allow Google login even if reCAPTCHA has errors (backend will handle in dev mode)
   if (!recaptchaToken && !recaptchaError) {
-    alert('Please complete the reCAPTCHA');
+    Swal.fire({
+      icon: 'warning',
+      title: 'reCAPTCHA Required',
+      text: 'Please complete the reCAPTCHA',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
@@ -64,12 +70,22 @@ const handleLoginsuccess = async (credentialResponse) => {
   if (!response.ok) {
     // Show specific error message
     const errorMessage = data.message || 'Login failed';
-    alert(errorMessage);
+    Swal.fire({
+      icon: 'error',
+      title: 'Login Failed',
+      text: errorMessage,
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
   if (!data.user || !data.user.role) {
-    alert('Invalid user data received. Please try again.');
+    Swal.fire({
+      icon: 'error',
+      title: 'Invalid Data',
+      text: 'Invalid user data received. Please try again.',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
@@ -102,7 +118,12 @@ const handleAdminLogin = async (e) => {
   // Only require reCAPTCHA in production or if explicitly configured
   // In development, allow login without reCAPTCHA if it fails
   if (!recaptchaToken && !recaptchaError) {
-    alert('Please complete the reCAPTCHA');
+    Swal.fire({
+      icon: 'warning',
+      title: 'reCAPTCHA Required',
+      text: 'Please complete the reCAPTCHA',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
@@ -127,12 +148,22 @@ const handleAdminLogin = async (e) => {
   const data = await response.json();
 
   if (!response.ok) {
-    alert(data.message || 'Admin login failed');
+    Swal.fire({
+      icon: 'error',
+      title: 'Login Failed',
+      text: data.message || 'Admin login failed',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
   if (!data.user || !data.user.role) {
-    alert('Invalid user data received. Please try again.');
+    Swal.fire({
+      icon: 'error',
+      title: 'Invalid Data',
+      text: 'Invalid user data received. Please try again.',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
@@ -153,7 +184,12 @@ const handleForgotPassword = async (e) => {
   e.preventDefault();
 
   if (!forgotEmail.trim()) {
-    alert('Please enter your email address');
+    Swal.fire({
+      icon: 'warning',
+      title: 'Email Required',
+      text: 'Please enter your email address',
+      confirmButtonColor: '#2563eb'
+    });
     return;
   }
 
@@ -178,7 +214,12 @@ const handleForgotPassword = async (e) => {
     const data = await response.json();
 
     if (response.ok) {
-      alert('Password reset email sent! Please check your inbox (and spam folder).');
+      Swal.fire({
+        icon: 'success',
+        title: 'Email Sent',
+        text: 'Password reset email sent! Please check your inbox (and spam folder).',
+        confirmButtonColor: '#2563eb'
+      });
       setShowForgotPassword(false);
       setForgotEmail('');
     } else {
@@ -191,11 +232,21 @@ const handleForgotPassword = async (e) => {
       } else if (data.error === 'EMAIL_SEND_ERROR') {
         errorMsg = data.message || 'Failed to send email. Please try again later.';
       }
-      alert(errorMsg);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: errorMsg,
+        confirmButtonColor: '#2563eb'
+      });
     }
   } catch (error) {
     console.error('Error sending forgot password request:', error);
-    alert('Network error. Please check your connection and try again.');
+    Swal.fire({
+      icon: 'error',
+      title: 'Network Error',
+      text: 'Network error. Please check your connection and try again.',
+      confirmButtonColor: '#2563eb'
+    });
   }
 }
 

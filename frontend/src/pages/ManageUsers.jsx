@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import Swal from 'sweetalert2';
 
 const ManageUsers = () => {
   const { logout, user } = useAuth();
@@ -144,7 +145,16 @@ const ManageUsers = () => {
   };
 
   const handleArchiveUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to archive this user? They will no longer be able to access the system.')) {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Archive User',
+      text: 'Are you sure you want to archive this user? They will no longer be able to access the system.',
+      showCancelButton: true,
+      confirmButtonColor: '#f97316',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, archive it'
+    });
+    if (!result.isConfirmed) {
       return;
     }
     try {

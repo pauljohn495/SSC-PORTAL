@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import NotificationDropdown from '../components/NotificationDropdown'
+import Swal from 'sweetalert2'
 
 const StudentHandbook = () => {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -133,7 +134,12 @@ const StudentHandbook = () => {
       return
     }
 
-    alert('Handbook file not available for download')
+    Swal.fire({
+      icon: 'warning',
+      title: 'File Not Available',
+      text: 'Handbook file not available for download',
+      confirmButtonColor: '#2563eb'
+    })
   }
 
   const previewUrl = useMemo(() => getHandbookPreviewUrl(currentHandbook), [currentHandbook, getHandbookPreviewUrl])

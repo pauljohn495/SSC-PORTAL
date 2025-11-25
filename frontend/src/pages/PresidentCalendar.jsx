@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { logApiResponse } from '../utils/fetchWithLogging'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
+import Swal from 'sweetalert2'
 
 // Helper function to format date as ISO string with local time (no timezone conversion)
 // The timezone will be specified separately to Google Calendar
@@ -159,8 +160,17 @@ const PresidentCalendar = () => {
   }
 
   const handleArchiveClick = async (eventId, eventTitle) => {
-    if (!window.confirm(`Are you sure you want to archive "${eventTitle || 'this event'}"?`)) {
-      return
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Archive Event',
+      text: `Are you sure you want to archive "${eventTitle || 'this event'}"?`,
+      showCancelButton: true,
+      confirmButtonColor: '#f97316',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, archive it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     try {
       setError(null)
@@ -196,8 +206,17 @@ const PresidentCalendar = () => {
   }
 
   const handleRestoreClick = async (eventId, eventTitle) => {
-    if (!window.confirm(`Are you sure you want to restore "${eventTitle || 'this event'}"?`)) {
-      return
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Restore Event',
+      text: `Are you sure you want to restore "${eventTitle || 'this event'}"?`,
+      showCancelButton: true,
+      confirmButtonColor: '#16a34a',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, restore it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     try {
       setError(null)
@@ -233,8 +252,17 @@ const PresidentCalendar = () => {
   }
 
   const handleDeleteClick = async (eventId, eventTitle) => {
-    if (!window.confirm(`Are you sure you want to permanently delete "${eventTitle || 'this event'}"? This action cannot be undone.`)) {
-      return
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete Event',
+      text: `Are you sure you want to permanently delete "${eventTitle || 'this event'}"? This action cannot be undone.`,
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
     }
     try {
       setError(null)

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { presidentAPI } from '../services/api';
+import Swal from 'sweetalert2';
 
 const PresidentNotifications = () => {
   const { logout, user } = useAuth();
@@ -71,7 +72,16 @@ const PresidentNotifications = () => {
   };
 
   const handlePublish = async (notificationId) => {
-    if (!window.confirm('Are you sure you want to publish this notification? It will be sent to all users via email.')) {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Publish Notification',
+      text: 'Are you sure you want to publish this notification? It will be sent to all users via email.',
+      showCancelButton: true,
+      confirmButtonColor: '#16a34a',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, publish it'
+    });
+    if (!result.isConfirmed) {
       return;
     }
 
@@ -93,7 +103,16 @@ const PresidentNotifications = () => {
   };
 
   const handleDelete = async (notificationId, notificationTitle) => {
-    if (!window.confirm(`Are you sure you want to delete "${notificationTitle}"? This action cannot be undone.`)) {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Delete Notification',
+      text: `Are you sure you want to delete "${notificationTitle}"? This action cannot be undone.`,
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
       return;
     }
 
