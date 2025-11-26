@@ -123,12 +123,21 @@ export const createPolicyDepartment = async (req, res, next) => {
 export const updatePolicyDepartment = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { userId, name, description, college } = req.body;
+    const { userId, name, description, college, version } = req.body;
     const user = await ensureUserRole(userId, ['president']);
 
     const department = await PolicyDepartment.findById(id);
     if (!department || department.isArchived) {
       return res.status(404).json({ message: 'Department not found' });
+    }
+
+    // Optimistic concurrency: if client sends a numeric version and it
+    // does not match the current one, reject with a conflict.
+    if (Number.isFinite(Number(version))) {
+      const numericVersion = Number(version);
+      if (department.version !== numericVersion) {
+        return res.status(409).json({ message: 'Department has been modified. Please refresh and try again.' });
+      }
     }
 
     if (name && name.trim() && name.trim() !== department.name) {
@@ -152,6 +161,7 @@ export const updatePolicyDepartment = async (req, res, next) => {
       department.college = college;
     }
     department.updatedBy = user._id;
+    department.version = (department.version || 1) + 1;
     await department.save();
 
     await logActivity(user._id, 'policy_department_update', `Updated policy department "${department.name}"`, {

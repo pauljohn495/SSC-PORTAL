@@ -173,7 +173,28 @@ const PresidentMemorandum = () => {
       });
 
       logApiResponse(priorityResponse);
-      const priorityData = await priorityResponse.json();
+
+      let priorityData = {};
+      try {
+        priorityData = await priorityResponse.json();
+      } catch {
+        priorityData = {};
+      }
+
+      // If the request itself failed, show an error and do not open the modal.
+      if (!priorityResponse.ok) {
+        setHasPriority(false);
+        setPriorityError(priorityData.message || 'Failed to get edit priority. Please try again.');
+        return;
+      }
+
+      // If the server did not return a clear boolean hasPriority flag,
+      // treat it as "no priority" to avoid two users editing at once.
+      if (typeof priorityData.hasPriority !== 'boolean') {
+        setHasPriority(false);
+        setPriorityError('Unable to determine edit priority. Please refresh and try again.');
+        return;
+      }
 
       if (priorityData.hasPriority) {
         // User has priority
@@ -191,20 +212,9 @@ const PresidentMemorandum = () => {
         setMessage('');
         setMessageType('');
       } else {
-        // Another user has priority
+        // Another user already has edit priority - do NOT open the editor.
         setHasPriority(false);
-        setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
-        setEditingMemorandum(memorandum);
-        setEditTitle(memorandum.title);
-        setEditYear(memorandum.year.toString());
-        setEditFile(null);
-        setEditVersion(memorandum.version || 1);
-        setShowModal(true);
-        setTitle('');
-        setYear('');
-        setFile(null);
-        setMessage('');
-        setMessageType('');
+        setPriorityError('Someone is editing this right now. Please try again later.');
       }
     } catch (error) {
       console.error('Error getting edit priority:', error);
@@ -259,7 +269,13 @@ const PresidentMemorandum = () => {
       });
 
       logApiResponse(response);
-      const data = await response.json();
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
       
       if (response.ok) {
         setMessage('Memorandum updated successfully! Waiting for admin approval.');
@@ -271,6 +287,13 @@ const PresidentMemorandum = () => {
         setShowModal(false);
         fetchMemorandums(); // Refresh the list
       } else {
+        // If the backend says we no longer have edit priority,
+        // reflect that in the UI so the green banner + button state
+        // stay consistent with the real server state.
+        if (response.status === 409 && data.hasPriority === false) {
+          setHasPriority(false);
+          setPriorityError(data.message || 'You no longer have edit priority for this document.');
+        }
         setMessage(data.message || 'Failed to update memorandum. Please try again.');
         setMessageType('error');
       }
@@ -365,8 +388,8 @@ const PresidentMemorandum = () => {
         </div>
         <ul className='space-y-4'>
           <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
           <li><Link to="/president-memorandum" className="block py-2 px-4 bg-blue-800 rounded transition">Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
           <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
           <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notifications</Link></li>
           <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
@@ -380,36 +403,42 @@ const PresidentMemorandum = () => {
           {!isAuthorized ? (
             <div>Access Denied</div>
           ) : (
-          <div className='flex justify-between items-center mb-8'>
-            <h1 className='text-3xl font-bold text-blue-950'>Memorandum</h1>
-            <div className='flex items-center space-x-4'>
-              <button 
-                onClick={() => { setLoading(true); fetchMemorandums(); }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
-                title="Refresh page data"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
-              </button>
-              <button
-                onClick={() => setShowModal(true)}
-                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
-              >
-                Create Memorandum
-              </button>
-            </div>
-          </div>
-          )}
+            <>
+              <div className='flex justify-between items-center mb-8'>
+                <h1 className='text-3xl font-bold text-blue-950'>Memorandum</h1>
+                <div className='flex items-center space-x-4'>
+                  <button 
+                    onClick={() => { setLoading(true); fetchMemorandums(); }} 
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+                    title="Refresh page data"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Refresh</span>
+                  </button>
+                  <button
+                    onClick={() => setShowModal(true)}
+                    className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+                  >
+                    Create Memorandum
+                  </button>
+                </div>
+              </div>
 
-          {/* Memorandum List */}
-          <div className='bg-white rounded-lg shadow-md mb-8'>
-            {!isAuthorized ? null : (loading ? (
-              <div className='text-center py-12 text-gray-500'>Loading...</div>
-            ) : memorandums.length > 0 ? (
-              <div>
-                {memorandums.map((memorandum, index) => {
+              {!showModal && priorityError && !hasPriority && (
+                <div className='mb-4 p-4 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
+                  {priorityError}
+                </div>
+              )}
+
+              {/* Memorandum List */}
+              <div className='bg-white rounded-lg shadow-md mb-8'>
+                {!isAuthorized ? null : (loading ? (
+                  <div className='text-center py-12 text-gray-500'>Loading...</div>
+                ) : memorandums.length > 0 ? (
+                  <div>
+                    {memorandums.map((memorandum, index) => {
                   const createdAt = new Date(memorandum.uploadedAt).toLocaleDateString('en-US', { 
                     month: 'short', 
                     day: 'numeric', 
@@ -467,6 +496,8 @@ const PresidentMemorandum = () => {
               <div className='text-center py-12 text-gray-500'>No memorandums yet. Click "Create Memorandum" to add one.</div>
             ))}
           </div>
+            </>
+          )}
         </div>
       </main>
 

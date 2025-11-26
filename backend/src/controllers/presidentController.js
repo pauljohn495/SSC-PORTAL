@@ -410,7 +410,10 @@ export const updateMemorandum = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    if (!memorandum.priorityEditor || memorandum.priorityEditor.toString() !== userId) {
+    // If another user currently holds edit priority, block this save.
+    // If priority is not set at all (e.g., legacy data or a failed priority call),
+    // allow the update so a single user is never locked out.
+    if (memorandum.priorityEditor && memorandum.priorityEditor.toString() !== userId) {
       const response = { 
         message: 'You do not have edit priority. Only the first user to click edit can save changes.',
         hasPriority: false
@@ -419,10 +422,18 @@ export const updateMemorandum = async (req, res, next) => {
       return res.status(409).json(response);
     }
 
-    if (memorandum.version !== version) {
-      const response = { message: 'Document has been modified. Please refresh and try again.' };
-      logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 409, response);
-      return res.status(409).json(response);
+    // Optimistic concurrency check:
+    // - If the client sends a numeric version that does NOT match the current
+    //   version in the database, we block the update.
+    // - If the client omits the version or sends an invalid value, we skip
+    //   this check so users are not permanently locked out by bad local state.
+    if (Number.isFinite(Number(version))) {
+      const numericVersion = Number(version);
+      if (memorandum.version !== numericVersion) {
+        const response = { message: 'Document has been modified. Please refresh and try again.' };
+        logAndSetHeader(req, res, 'PUT', `/api/president/memorandums/${id}`, 409, response);
+        return res.status(409).json(response);
+      }
     }
 
     const oldFileUrl = memorandum.fileUrl;
@@ -704,7 +715,10 @@ export const updateHandbook = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    if (!handbook.priorityEditor || handbook.priorityEditor.toString() !== userId) {
+    // If another user currently holds edit priority, block this save.
+    // If priority is not set at all, allow the update so a single user
+    // is not blocked by missing priority state.
+    if (handbook.priorityEditor && handbook.priorityEditor.toString() !== userId) {
       const response = { 
         message: 'You do not have edit priority. Only the first user to click edit can save changes.',
         hasPriority: false
@@ -897,6 +911,7 @@ export const updateHandbookSection = async (req, res, next) => {
       published,
       fileUrl,
       fileName,
+      version,
     } = req.body;
 
     if (!userId) {
@@ -917,6 +932,17 @@ export const updateHandbookSection = async (req, res, next) => {
       const response = { message: 'Section not found' };
       logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 404, response);
       return res.status(404).json(response);
+    }
+
+    // Optimistic concurrency: if client sends a numeric version and it
+    // does not match the current one, reject with a conflict.
+    if (Number.isFinite(Number(version))) {
+      const numericVersion = Number(version);
+      if ((section.version || 1) !== numericVersion) {
+        const response = { message: 'Section has been modified. Please refresh and try again.' };
+        logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 409, response);
+        return res.status(409).json(response);
+      }
     }
 
     if (title && title.trim() && title !== section.title) {
@@ -959,6 +985,7 @@ export const updateHandbookSection = async (req, res, next) => {
     section.approvedBy = null;
     section.approvedAt = null;
     section.updatedBy = userId;
+    section.version = (section.version || 1) + 1;
     await section.save();
 
     await logActivity(userId, 'handbook_section_update', `Updated handbook sidebar section "${section.title}"`, {

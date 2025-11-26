@@ -3,6 +3,8 @@ import { getAuthUrl, oauthCallback, listEvents, createEvent, updateEvent, archiv
 import {
   createHandbook,
   updateHandbook,
+  setHandbookPriority,
+  clearHandbookPriority,
   getHandbookSections,
   createHandbookSection,
   updateHandbookSection,
@@ -12,6 +14,8 @@ import {
   deleteNotification,
   uploadMemorandum,
   updateMemorandum,
+  setMemorandumPriority,
+  clearMemorandumPriority,
   getDriveAuthUrl,
   driveOAuthCallback,
   getDriveConnectionStatus
@@ -47,6 +51,8 @@ router.get('/drive/status', getDriveConnectionStatus);
 // Handbook routes
 router.post('/handbook', createHandbook);
 router.put('/handbook/:id', updateHandbook);
+router.post('/handbook/:id/priority', setHandbookPriority);
+router.post('/handbook/:id/clear-priority', clearHandbookPriority);
 router.get('/handbook-sections', getHandbookSections);
 router.post('/handbook-sections', createHandbookSection);
 router.put('/handbook-sections/:id', updateHandbookSection);
@@ -60,6 +66,8 @@ router.delete('/notifications/:id', deleteNotification);
 // Memorandum routes
 router.post('/memorandums', uploadMemorandum);
 router.put('/memorandums/:id', updateMemorandum);
+router.post('/memorandums/:id/priority', setMemorandumPriority);
+router.post('/memorandums/:id/clear-priority', clearMemorandumPriority);
 
 // Activity logs routes
 router.get('/activity-logs', getActivityLogs);

@@ -37,6 +37,7 @@ const PresidentHandbook = () => {
   const [sectionMessage, setSectionMessage] = useState('');
   const [sectionMessageType, setSectionMessageType] = useState('');
   const [editingSection, setEditingSection] = useState(null);
+  const [editingSectionVersion, setEditingSectionVersion] = useState(1);
 
   const isAuthorized = !!user && user.role === 'president';
 
@@ -196,8 +197,10 @@ const PresidentHandbook = () => {
         order: section.order ?? 0,
         published: section.published ?? true,
       });
+      setEditingSectionVersion(section.version || 1);
     } else {
       setEditingSection(null);
+      setEditingSectionVersion(1);
       setSectionForm({
         title: '',
         description: '',
@@ -263,7 +266,10 @@ const PresidentHandbook = () => {
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          ...(editingSection ? { version: editingSectionVersion } : {}),
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -400,16 +406,9 @@ const PresidentHandbook = () => {
         setMessage('');
         setMessageType('');
       } else {
-        // Another user has priority
+        // Another user already has edit priority - do NOT open the editor.
         setHasPriority(false);
-        setPriorityError(`${priorityData.priorityEditor} has edit priority since ${new Date(priorityData.priorityEditStartedAt).toLocaleString()}. You can edit but only they can save.`);
-        setEditingHandbook(handbook);
-        setEditFile(null);
-        setEditVersion(handbook.version || 1);
-        setShowModal(true);
-        setFile(null);
-        setMessage('');
-        setMessageType('');
+        setPriorityError('Someone is editing this right now. Please try again later.');
       }
     } catch (error) {
       console.error('Error getting edit priority:', error);
@@ -586,8 +585,8 @@ const PresidentHandbook = () => {
         </div>
         <ul className='space-y-4'>
           <li><Link to="/president-handbook" className="block py-2 px-4 bg-blue-800 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
           <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
           <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
           <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notifications</Link></li>
           <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
@@ -642,6 +641,12 @@ const PresidentHandbook = () => {
               </button>
             </div>
           </div>
+
+          {!showModal && priorityError && !hasPriority && (
+            <div className='mb-4 p-4 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
+              {priorityError}
+            </div>
+          )}
 
           {/* Drive Connection Warning */}
           {!checkingDrive && !driveConnected && (

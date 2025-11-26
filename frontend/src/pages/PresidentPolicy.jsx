@@ -10,6 +10,9 @@ const PresidentPolicy = () => {
   const [loading, setLoading] = useState(true)
   const [deptModalOpen, setDeptModalOpen] = useState(false)
   const [deptForm, setDeptForm] = useState({ name: '', description: '' })
+  const [renameModalOpen, setRenameModalOpen] = useState(false)
+  const [renameDept, setRenameDept] = useState(null)
+  const [renameForm, setRenameForm] = useState({ name: '', description: '', version: 1 })
   const [sectionModalOpen, setSectionModalOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState({ departmentId: '', title: '', description: '' })
   const [sectionFile, setSectionFile] = useState(null)
@@ -139,24 +142,43 @@ const PresidentPolicy = () => {
     }
   }
 
-  const handleRenameDepartment = async (department) => {
-    const nextName = window.prompt('Enter new department name', department.name)
-    if (!nextName || nextName.trim() === department.name) {
+  const handleRenameDepartment = (department) => {
+    setRenameDept(department)
+    setRenameForm({
+      name: department.name || '',
+      description: department.description || '',
+      version: department.version || 1
+    })
+    setRenameModalOpen(true)
+    setMessage('')
+    setMessageType('')
+  }
+
+  const submitRenameDepartment = async (event) => {
+    event.preventDefault()
+    if (!renameDept || !renameForm.name.trim()) {
+      setMessage('Department name is required')
+      setMessageType('error')
       return
     }
     try {
-      const response = await fetch(`/api/president/policies/departments/${department._id}`, {
+      const response = await fetch(`/api/president/policies/departments/${renameDept._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user._id,
-          name: nextName.trim()
+          name: renameForm.name.trim(),
+          description: renameForm.description,
+          version: renameForm.version
         })
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw new Error(data.message || 'Failed to rename department')
       }
+      setRenameModalOpen(false)
+      setRenameDept(null)
+      setRenameForm({ name: '', description: '' })
       fetchDepartments()
       setMessage('Department updated')
       setMessageType('success')
@@ -345,6 +367,57 @@ const PresidentPolicy = () => {
               <div className='flex justify-end gap-2'>
                 <button type='button' className='px-4 py-2 text-sm rounded-lg border border-gray-300' onClick={() => setDeptModalOpen(false)}>Cancel</button>
                 <button type='submit' className='px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700'>Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {renameModalOpen && (
+        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
+          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
+            <h3 className='text-xl font-semibold text-blue-950 mb-4'>Rename Department</h3>
+            <form className='space-y-4' onSubmit={submitRenameDepartment}>
+              <div>
+                <label className='text-sm font-semibold text-black block mb-1'>Department</label>
+                <input
+                  type='text'
+                  value={renameForm.name}
+                  onChange={(event) =>
+                    setRenameForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-black'
+                  required
+                />
+              </div>
+              <div>
+                <label className='text-sm font-semibold text-black block mb-1'>Description</label>
+                <textarea
+                  value={renameForm.description}
+                  onChange={(event) =>
+                    setRenameForm((prev) => ({ ...prev, description: event.target.value }))
+                  }
+                  rows={3}
+                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                />
+              </div>
+              <div className='flex justify-end gap-2'>
+                <button
+                  type='button'
+                  className='px-4 py-2 text-sm rounded-lg border border-gray-300'
+                  onClick={() => {
+                    setRenameModalOpen(false)
+                    setRenameDept(null)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type='submit'
+                  className='px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700'
+                >
+                  Save Changes
+                </button>
               </div>
             </form>
           </div>
