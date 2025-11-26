@@ -189,6 +189,26 @@ export const deleteFileFromDrive = async (fileId, userId) => {
   }
 };
 
+export const downloadFileFromDrive = async (fileId, userId) => {
+  if (!fileId) {
+    throw new Error('File ID is required to download from Google Drive');
+  }
+  if (!userId) {
+    throw new Error('User ID is required to download from Google Drive');
+  }
+  const drive = await getDriveClient(userId);
+  const response = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'stream' }
+  );
+  const chunks = [];
+  return await new Promise((resolve, reject) => {
+    response.data.on('data', (chunk) => chunks.push(chunk));
+    response.data.on('end', () => resolve(Buffer.concat(chunks)));
+    response.data.on('error', (error) => reject(error));
+  });
+};
+
 /**
  * Extract text from PDF buffer (for search indexing)
  * @param {Buffer} pdfBuffer - PDF file buffer

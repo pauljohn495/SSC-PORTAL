@@ -2,12 +2,15 @@ import User from '../models/User.js';
 import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
+import HandbookSection from '../models/HandbookSection.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
+import { deletePDFFile } from '../utils/fileStorage.js';
+import { deleteFileFromDrive } from '../utils/googleDrive.js';
 
 // Helper function to send email notification to president
 const notifyPresident = async (subject, content) => {
@@ -929,6 +932,129 @@ export const permanentlyDeleteHandbook = async (req, res, next) => {
 
     const response = { message: 'Handbook deleted permanently' };
     logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook/${id}/permanent`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const sectionStatusOrder = {
+  pending: 0,
+  approved: 1,
+  rejected: 2,
+};
+
+export const getHandbookSectionsAdmin = async (req, res, next) => {
+  try {
+    const sections = await HandbookSection.find()
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .populate('approvedBy', 'name email')
+      .sort({ createdAt: -1 });
+
+    sections.sort((a, b) => {
+      const statusDiff = sectionStatusOrder[a.status] - sectionStatusOrder[b.status];
+      if (statusDiff !== 0) return statusDiff;
+      return b.createdAt - a.createdAt;
+    });
+
+    logAndSetHeader(req, res, 'GET', '/api/admin/handbook-sections', 200, sections);
+    res.json(sections);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateHandbookSectionStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, adminId } = req.body;
+
+    if (!adminId) {
+      const response = { message: 'Admin ID is required' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/status`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      const response = { message: 'Only admins can update section status' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/status`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    if (!['approved', 'rejected'].includes(status)) {
+      const response = { message: 'Invalid status' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/status`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/status`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    section.status = status;
+    section.published = status === 'approved';
+    section.approvedBy = adminId;
+    section.approvedAt = new Date();
+    await section.save();
+
+    const activity = status === 'approved' ? 'handbook_section_approve' : 'handbook_section_reject';
+    await logActivity(adminId, activity, `Section "${section.title}" ${status}`, {
+      sectionId: section._id,
+      status,
+    }, req);
+
+    const response = { message: `Section ${status}`, section };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/status`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteHandbookSectionAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body || {};
+
+    if (!adminId) {
+      const response = { message: 'Admin ID is required' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      const response = { message: 'Only admins can delete sections' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (section.googleDriveFileId) {
+      await deleteFileFromDrive(section.googleDriveFileId, adminId);
+    } else if (section.fileUrl && !section.fileUrl.startsWith('http')) {
+      deletePDFFile(section.fileUrl);
+    }
+
+    await HandbookSection.findByIdAndDelete(id);
+
+    await logActivity(adminId, 'handbook_section_delete', `Section "${section.title}" deleted`, {
+      sectionId: section._id,
+    }, req);
+
+    const response = { message: 'Section deleted successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 200, response);
     res.json(response);
   } catch (error) {
     next(error);

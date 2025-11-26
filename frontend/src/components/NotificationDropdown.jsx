@@ -1,13 +1,27 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { publicAPI } from '../services/api';
 import { subscribeOnMessage } from '../firebase';
 import { onEvent } from '../realtime/socket';
+import { useAuth } from '../contexts/AuthContext';
 
 const NotificationDropdown = () => {
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef(null);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const params = user?.department ? { department: user.department } : undefined;
+      const data = await publicAPI.getPublicNotifications(params);
+      setNotifications(data);
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.department]);
 
   useEffect(() => {
     fetchNotifications();
@@ -16,7 +30,7 @@ const NotificationDropdown = () => {
     const interval = setInterval(fetchNotifications, 30000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchNotifications]);
 
   // Realtime: update list/badge on FCM foreground/background messages
   useEffect(() => {
@@ -40,7 +54,7 @@ const NotificationDropdown = () => {
         navigator.serviceWorker.removeEventListener('message', onSwMessage);
       }
     };
-  }, []);
+  }, [fetchNotifications]);
 
   // Realtime: Socket.IO events
   useEffect(() => {
@@ -52,7 +66,7 @@ const NotificationDropdown = () => {
       off2 && off2();
       off3 && off3();
     };
-  }, []);
+  }, [fetchNotifications]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -67,17 +81,6 @@ const NotificationDropdown = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const fetchNotifications = async () => {
-    try {
-      const data = await publicAPI.getPublicNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);

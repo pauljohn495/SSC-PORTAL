@@ -1,10 +1,13 @@
 import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import Notification from '../models/Notification.js';
+import HandbookSection from '../models/HandbookSection.js';
+import { getDepartments } from '../data/departments.js';
 import { getFirebaseAdmin } from '../config/firebaseAdmin.js';
 import User from '../models/User.js';
 import { readPDFFromFile } from '../utils/fileStorage.js';
 import { PDFDocument } from 'pdf-lib';
+import { downloadFileFromDrive } from '../utils/googleDrive.js';
 
 // Get all approved handbooks
 export const getPublicHandbooks = async (req, res, next) => {
@@ -40,6 +43,10 @@ export const getPublicHandbooks = async (req, res, next) => {
   }
 };
 
+export const getDepartmentsCatalog = (req, res) => {
+  res.json(getDepartments());
+};
+
 // Get all approved memorandums
 export const getPublicMemorandums = async (req, res, next) => {
   try {
@@ -50,13 +57,37 @@ export const getPublicMemorandums = async (req, res, next) => {
   }
 };
 
-// Get all published notifications
+// Get all published notifications (optionally filtered by department)
 export const getPublicNotifications = async (req, res, next) => {
   try {
-    const notifications = await Notification.find({ published: true })
+    const { department } = req.query;
+    const baseFilter = { published: true };
+    if (department) {
+      const trimmedDepartment = department.trim();
+      baseFilter.$or = [
+        { targetScope: 'all' },
+        {
+          targetScope: { $in: ['departments', 'range'] },
+          targetDepartments: trimmedDepartment
+        }
+      ];
+    }
+
+    const notifications = await Notification.find(baseFilter)
       .populate('createdBy', 'name email')
       .sort({ publishedAt: -1 });
     res.json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get published handbook sidebar sections
+export const getPublicHandbookSections = async (req, res, next) => {
+  try {
+    const sections = await HandbookSection.find({ published: true, status: 'approved' })
+      .sort({ order: 1, createdAt: 1 });
+    res.json(sections);
   } catch (error) {
     next(error);
   }
@@ -263,6 +294,59 @@ export const streamHandbookFile = async (req, res, next) => {
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error streaming handbook file:', error);
+    return next(error);
+  }
+};
+
+export const streamHandbookSectionFile = async (req, res, next) => {
+  try {
+    const { sectionId } = req.params;
+    if (!sectionId) {
+      return res.status(400).json({ message: 'Section ID is required' });
+    }
+
+    const section = await HandbookSection.findById(sectionId);
+    if (!section) {
+      return res.status(404).json({ message: 'Section not found' });
+    }
+
+    if (section.published === false || section.status !== 'approved') {
+      return res.status(403).json({ message: 'Section is not available' });
+    }
+
+    let pdfBuffer = null;
+    const ownerId = section.updatedBy?.toString() || section.createdBy?.toString();
+    const fallbackFileName = section.title ? `${section.title}.pdf` : 'handbook-section.pdf';
+
+    if (section.googleDriveFileId && ownerId) {
+      try {
+        pdfBuffer = await downloadFileFromDrive(section.googleDriveFileId, ownerId);
+      } catch (error) {
+        console.error(`Failed to download section ${sectionId} from Drive:`, error);
+      }
+    }
+
+    if (!pdfBuffer && section.fileUrl) {
+      if (section.fileUrl.startsWith('data:')) {
+        const base64Data = section.fileUrl.split(',')[1];
+        pdfBuffer = Buffer.from(base64Data, 'base64');
+      } else if (section.fileUrl.startsWith('http')) {
+        pdfBuffer = await fetchPdfBufferFromUrl(section.fileUrl);
+      } else {
+        pdfBuffer = readPDFFromFile(section.fileUrl);
+      }
+    }
+
+    if (!pdfBuffer) {
+      return res.status(404).json({ message: 'Section PDF not available' });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error streaming handbook section file:', error);
     return next(error);
   }
 };

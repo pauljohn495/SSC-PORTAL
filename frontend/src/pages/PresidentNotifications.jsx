@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { presidentAPI } from '../services/api';
+import { presidentAPI, publicAPI } from '../services/api';
 import Swal from 'sweetalert2';
 
 const PresidentNotifications = () => {
@@ -17,6 +17,42 @@ const PresidentNotifications = () => {
   const [loading, setLoading] = useState(true);
   const [publishingId, setPublishingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [targetScope, setTargetScope] = useState('all');
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [departments, setDepartments] = useState([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+
+  const resetForm = () => {
+    setTitle('');
+    setMessage('');
+    setTargetScope('all');
+    setSelectedDepartments([]);
+    setRangeStart('');
+    setRangeEnd('');
+  };
+  const toggleDepartmentSelection = (departmentName) => {
+    setSelectedDepartments((prev) => {
+      if (prev.includes(departmentName)) {
+        return prev.filter((dept) => dept !== departmentName);
+      }
+      return [...prev, departmentName];
+    });
+  };
+
+  const getAudienceLabel = (notification) => {
+    if (!notification || !notification.targetScope || notification.targetScope === 'all') {
+      return 'All departments';
+    }
+    if (notification.targetDepartments && notification.targetDepartments.length > 0) {
+      return notification.targetDepartments.join(', ');
+    }
+    if (notification.targetScope === 'range' && notification.rangeStart && notification.rangeEnd) {
+      return `${notification.rangeStart} → ${notification.rangeEnd}`;
+    }
+    return 'Selected departments';
+  };
 
   const isAuthorized = !!user && user.role === 'president';
 
@@ -25,6 +61,29 @@ const PresidentNotifications = () => {
       fetchNotifications();
     }
   }, [isAuthorized]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadDepartments = async () => {
+      try {
+        setDepartmentsLoading(true);
+        const data = await publicAPI.getDepartments();
+        if (isMounted && Array.isArray(data)) {
+          setDepartments(data);
+        }
+      } catch (error) {
+        console.error('Error fetching departments:', error);
+      } finally {
+        if (isMounted) {
+          setDepartmentsLoading(false);
+        }
+      }
+    };
+    loadDepartments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const fetchNotifications = async () => {
     try {
@@ -47,19 +106,42 @@ const PresidentNotifications = () => {
       return;
     }
 
+     if (targetScope === 'departments' && selectedDepartments.length === 0) {
+       setMessageAlert('Select at least one department to notify.');
+       setMessageType('error');
+       return;
+     }
+
+     if (targetScope === 'range' && (!rangeStart || !rangeEnd)) {
+       setMessageAlert('Select both a starting and ending department for the range.');
+       setMessageType('error');
+       return;
+     }
+
     try {
       setSubmitting(true);
       
-      const data = await presidentAPI.createNotification({
+      const payload = {
         title,
         message,
-        userId: user._id
-      });
+        userId: user._id,
+        targetScope,
+      };
+
+      if (targetScope === 'departments') {
+        payload.departments = selectedDepartments;
+      }
+
+      if (targetScope === 'range') {
+        payload.rangeStart = rangeStart;
+        payload.rangeEnd = rangeEnd;
+      }
+
+      const data = await presidentAPI.createNotification(payload);
       
       setMessageAlert('Notification created successfully!');
       setMessageType('success');
-      setTitle('');
-      setMessage('');
+      resetForm();
       setShowModal(false);
       fetchNotifications();
     } catch (error) {
@@ -198,7 +280,10 @@ const PresidentNotifications = () => {
                 <span>Refresh</span>
               </button>
               <button
-                onClick={() => setShowModal(true)}
+                onClick={() => {
+                  resetForm();
+                  setShowModal(true);
+                }}
                 className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
               >
                 Create Notification
@@ -248,6 +333,9 @@ const PresidentNotifications = () => {
                       <div className='text-sm text-gray-400'>
                         Created: {formatDate(notification.createdAt)}
                         {notification.publishedAt && ` | Published: ${formatDate(notification.publishedAt)}`}
+                      </div>
+                      <div className='text-xs text-gray-500 mt-1'>
+                        Audience: {getAudienceLabel(notification)}
                       </div>
                     </div>
                     <div className='flex items-center space-x-2 ml-4'>
@@ -323,13 +411,106 @@ const PresidentNotifications = () => {
                 />
               </div>
 
+              <div className="mb-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Audience
+                </label>
+                <select
+                  value={targetScope}
+                  onChange={(e) => {
+                    setTargetScope(e.target.value);
+                    setSelectedDepartments([]);
+                    setRangeStart('');
+                    setRangeEnd('');
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                >
+                  <option value="all">All departments</option>
+                  <option value="departments">Specific departments</option>
+                  <option value="range">Range of departments</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose who should receive this notification.
+                </p>
+              </div>
+
+              {targetScope === 'departments' && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Select departments</p>
+                  {departmentsLoading ? (
+                    <p className="text-sm text-gray-500">Loading departments...</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-white">
+                      {departments.map((dept) => (
+                        <label key={dept} className="flex items-center space-x-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={selectedDepartments.includes(dept)}
+                            onChange={() => toggleDepartmentSelection(dept)}
+                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                          <span>{dept}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    {selectedDepartments.length} department{selectedDepartments.length === 1 ? '' : 's'} selected.
+                  </p>
+                </div>
+              )}
+
+              {targetScope === 'range' && (
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Select department range</p>
+                  {departmentsLoading ? (
+                    <p className="text-sm text-gray-500">Loading departments...</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">From</label>
+                        <select
+                          value={rangeStart}
+                          onChange={(e) => setRangeStart(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                        >
+                          <option value="">Select department</option>
+                          {departments.map((dept) => (
+                            <option key={`start-${dept}`} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">To</label>
+                        <select
+                          value={rangeEnd}
+                          onChange={(e) => setRangeEnd(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                        >
+                          <option value="">Select department</option>
+                          {departments.map((dept) => (
+                            <option key={`end-${dept}`} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Students whose departments fall within this range will receive the notification.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end space-x-4">
                 <button
                   type="button"
                   onClick={() => {
+                    resetForm();
                     setShowModal(false);
-                    setTitle('');
-                    setMessage('');
                     setMessageAlert('');
                   }}
                   className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"

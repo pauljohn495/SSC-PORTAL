@@ -17,6 +17,9 @@ router.put('/handbook/:id', adminController.updateHandbookStatus);
 router.delete('/handbook/:id', adminController.deleteHandbook);
 router.put('/handbook/:id/restore', adminController.restoreHandbook);
 router.delete('/handbook/:id/permanent', adminController.permanentlyDeleteHandbook);
+router.get('/handbook-sections', adminController.getHandbookSectionsAdmin);
+router.put('/handbook-sections/:id/status', adminController.updateHandbookSectionStatus);
+router.delete('/handbook-sections/:id', adminController.deleteHandbookSectionAdmin);
 
 // Memorandum management
 router.get('/memorandums', adminController.getMemorandums);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { logApiResponse } from '../utils/fetchWithLogging';
+import Swal from 'sweetalert2';
 
 const PresidentHandbook = () => {
   const { logout, user, updateUser } = useAuth();
@@ -21,10 +22,25 @@ const PresidentHandbook = () => {
   const [driveConnected, setDriveConnected] = useState(() => Boolean(user?.googleDriveConnected));
   const [checkingDrive, setCheckingDrive] = useState(true);
   const fileInputRef = useRef(null);
+  const [sidebarSections, setSidebarSections] = useState([]);
+  const [sectionsLoading, setSectionsLoading] = useState(true);
+  const [sectionModalOpen, setSectionModalOpen] = useState(false);
+  const [sectionSubmitting, setSectionSubmitting] = useState(false);
+  const [sectionsRefreshing, setSectionsRefreshing] = useState(false);
+  const [sectionForm, setSectionForm] = useState({
+    title: '',
+    description: '',
+    order: 0,
+    published: true
+  });
+  const [sectionFile, setSectionFile] = useState(null);
+  const [sectionMessage, setSectionMessage] = useState('');
+  const [sectionMessageType, setSectionMessageType] = useState('');
+  const [editingSection, setEditingSection] = useState(null);
 
   const isAuthorized = !!user && user.role === 'president';
 
-  const fetchHandbooks = async () => {
+  const fetchHandbooks = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/handbook');
       const data = await response.json();
@@ -35,7 +51,29 @@ const PresidentHandbook = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const fetchSections = useCallback(async ({ showFullLoader = false } = {}) => {
+    try {
+      if (showFullLoader) {
+        setSectionsLoading(true);
+      } else {
+        setSectionsRefreshing(true);
+      }
+      const response = await fetch('/api/president/handbook-sections');
+      if (!response.ok) {
+        throw new Error('Failed to load sidebar sections');
+      }
+      const data = await response.json();
+      setSidebarSections(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error fetching sidebar sections:', error);
+      setSidebarSections([]);
+    } finally {
+      setSectionsLoading(false);
+      setSectionsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof user?.googleDriveConnected === 'boolean') {
@@ -69,6 +107,7 @@ const PresidentHandbook = () => {
   useEffect(() => {
     if (isAuthorized) {
       fetchHandbooks();
+      fetchSections({ showFullLoader: true });
       checkDriveConnection();
       // Listen for OAuth callback
       const handleMessage = (event) => {
@@ -81,7 +120,7 @@ const PresidentHandbook = () => {
       window.addEventListener('message', handleMessage);
       return () => window.removeEventListener('message', handleMessage);
     }
-  }, [isAuthorized, user, checkDriveConnection]);
+  }, [isAuthorized, user?._id, checkDriveConnection, fetchHandbooks, fetchSections]);
 
   const connectGoogleDrive = async () => {
     if (!user?._id) return;
@@ -114,12 +153,133 @@ const PresidentHandbook = () => {
     }
   };
 
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (editingHandbook) {
       setEditFile(selectedFile);
     } else {
       setFile(selectedFile);
+    }
+  };
+
+  const handleSectionInputChange = (event) => {
+    const { name, value, type, checked } = event.target;
+    setSectionForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const handleSectionFileChange = (event) => {
+    const file = event.target.files[0];
+    setSectionFile(file || null);
+  };
+
+  const openSectionModal = (section = null) => {
+    if (!section && !driveConnected) {
+      setSectionMessage('Please connect your Google Drive account before creating sections.');
+      setSectionMessageType('error');
+      return;
+    }
+    if (section) {
+      setEditingSection(section);
+      setSectionForm({
+        title: section.title || '',
+        description: section.description || '',
+        order: section.order ?? 0,
+        published: section.published ?? true,
+      });
+    } else {
+      setEditingSection(null);
+      setSectionForm({
+        title: '',
+        description: '',
+        order: sidebarSections.length,
+        published: true,
+      });
+    }
+    setSectionFile(null);
+    setSectionMessage('');
+    setSectionMessageType('');
+    setSectionModalOpen(true);
+  };
+
+  const closeSectionModal = () => {
+    setSectionModalOpen(false);
+    setSectionFile(null);
+    setSectionMessage('');
+    setSectionMessageType('');
+    setEditingSection(null);
+    setSectionForm({
+      title: '',
+      description: '',
+      order: 0,
+      published: true,
+    });
+  };
+
+  const handleSectionSubmit = async (event) => {
+    event.preventDefault();
+    if (!user?._id) return;
+    if (!sectionForm.title.trim()) {
+      setSectionMessage('Please provide a section title.');
+      setSectionMessageType('error');
+      return;
+    }
+    if (!editingSection && !sectionFile) {
+      setSectionMessage('Please upload a PDF file for this section.');
+      setSectionMessageType('error');
+      return;
+    }
+    if ((!editingSection || sectionFile) && !driveConnected) {
+      setSectionMessage('Connect Google Drive to upload section PDFs.');
+      setSectionMessageType('error');
+      return;
+    }
+    try {
+      setSectionSubmitting(true);
+      const payload = {
+        userId: user._id,
+        title: sectionForm.title.trim(),
+        description: sectionForm.description,
+        order: Number(sectionForm.order) || 0,
+        published: Boolean(sectionForm.published),
+      };
+      if (sectionFile) {
+        payload.fileUrl = await fileToBase64(sectionFile);
+        payload.fileName = sectionFile.name || `${sectionForm.title}.pdf`;
+      }
+      const endpoint = editingSection
+        ? `/api/president/handbook-sections/${editingSection._id}`
+        : '/api/president/handbook-sections';
+      const method = editingSection ? 'PUT' : 'POST';
+      const response = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save section');
+      }
+      setSectionMessage(editingSection ? 'Section update submitted for admin approval.' : 'Section submitted for admin approval.');
+      setSectionMessageType('success');
+      setSectionModalOpen(false);
+      await fetchSections();
+    } catch (error) {
+      console.error('Error saving section:', error);
+      setSectionMessage(error.message || 'Failed to save section.');
+      setSectionMessageType('error');
+    } finally {
+      setSectionSubmitting(false);
+      setSectionFile(null);
     }
   };
 
@@ -405,6 +565,8 @@ const PresidentHandbook = () => {
     return `${Math.floor(diffInSeconds / 2592000)} months ago`;
   };
 
+  const isInitialSectionsLoad = sectionsLoading && sidebarSections.length === 0;
+
   return (
     <div className='bg-white min-h-screen flex'>
       {/* Sidebar Panel */}
@@ -439,29 +601,27 @@ const PresidentHandbook = () => {
             <div>Access Denied</div>
           ) : (
           <>
-          <div className='flex justify-between items-center mb-8'>
-            <h1 className='text-3xl font-bold text-blue-950'>Student Handbook</h1>
-            <div className='flex items-center space-x-4'>
-              {/* Google Drive Connection Status */}
-              {!checkingDrive && (
-                <div className='flex items-center space-x-2'>
-                  {driveConnected ? null : (
-                    <button
-                      onClick={connectGoogleDrive}
-                      className='flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors'
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      <span>Connect Google Drive</span>
-                    </button>
-                  )}
-                </div>
+          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8'>
+            <div>
+              <h1 className='text-3xl font-bold text-blue-950'>Handbook Section</h1>
+              <p className='text-sm text-gray-600'>Upload PDF sections for the student handbook. Admin approval is required before students can see them.</p>
+            </div>
+            <div className='flex items-center flex-wrap gap-3'>
+              {!checkingDrive && !driveConnected && (
+                <button
+                  onClick={connectGoogleDrive}
+                  className='flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors'
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>Connect Google Drive</span>
+                </button>
               )}
               <button 
-                onClick={() => { setLoading(true); fetchHandbooks(); }} 
+                onClick={() => fetchSections({ showFullLoader: true })} 
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
-                title="Refresh page data"
+                title="Refresh sections"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -469,14 +629,7 @@ const PresidentHandbook = () => {
                 <span>Refresh</span>
               </button>
               <button
-                onClick={() => {
-                  if (!driveConnected) {
-                    setMessage('Please connect your Google Drive account first to upload handbooks.');
-                    setMessageType('error');
-                    return;
-                  }
-                  setShowModal(true);
-                }}
+                onClick={() => openSectionModal(null)}
                 disabled={!driveConnected}
                 className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
                   driveConnected
@@ -484,7 +637,7 @@ const PresidentHandbook = () => {
                     : 'bg-gray-400 cursor-not-allowed text-white'
                 }`}
               >
-                Create Handbook
+                Add Section
               </button>
             </div>
           </div>
@@ -508,68 +661,153 @@ const PresidentHandbook = () => {
             </div>
           )}
 
-          {/* Handbook List */}
-          <div className='bg-white rounded-lg shadow-md mb-8'>
-            {loading ? (
-              <div className='text-center py-12 text-gray-500'>Loading...</div>
-            ) : handbooks.length > 0 ? (
-              <div>
-                {handbooks.map((handbook, index) => {
-                  const createdAt = new Date(handbook.createdAt).toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric', 
-                    year: 'numeric' 
-                  });
-                  const timeAgo = getTimeAgo(handbook.createdAt);
-                  
-                  return (
-                    <div key={handbook._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === handbooks.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
-                      <div className='flex-1 px-6 py-4'>
-                        <div className='flex items-center space-x-2'>
-                          <p className='text-gray-800 font-medium'>{handbook.fileName || 'Handbook PDF'}</p>
+          {false && (
+            <div className='bg-white rounded-lg shadow-md mb-8'>
+              {loading ? (
+                <div className='text-center py-12 text-gray-500'>Loading...</div>
+              ) : handbooks.length > 0 ? (
+                <div>
+                  {handbooks.map((handbook, index) => {
+                    const createdAt = new Date(handbook.createdAt).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric' 
+                    });
+                    const timeAgo = getTimeAgo(handbook.createdAt);
+                    
+                    return (
+                      <div key={handbook._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === handbooks.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-6 py-4'>
+                          <div className='flex items-center space-x-2'>
+                            <p className='text-gray-800 font-medium'>{handbook.fileName || 'Handbook PDF'}</p>
+                            {handbook.editedBy && (
+                              <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
+                                Edited
+                              </span>
+                            )}
+                          </div>
+                          <p className='text-sm text-gray-500 mt-1'>Full Student Handbook</p>
+                          <p className='text-xs text-gray-400 mt-1'>Created by: {handbook.createdBy ? handbook.createdBy.name : 'Unknown'}</p>
                           {handbook.editedBy && (
-                            <span className='px-2 py-1 bg-blue-900 text-white text-xs rounded-full'>
-                              Edited
-                            </span>
+                            <p className='text-xs text-gray-400 mt-1'>
+                              Last edited: {new Date(handbook.editedAt).toLocaleString()}
+                            </p>
+                          )}
+                          {handbook.priorityEditor && handbook.priorityEditStartedAt && (
+                            <p className='text-xs text-gray-500 mt-1'>
+                              Clicked Edit at: {new Date(handbook.priorityEditStartedAt).toLocaleString()}
+                            </p>
                           )}
                         </div>
-                        <p className='text-sm text-gray-500 mt-1'>Full Student Handbook</p>
-                        <p className='text-xs text-gray-400 mt-1'>Created by: {handbook.createdBy ? handbook.createdBy.name : 'Unknown'}</p>
-                        {handbook.editedBy && (
-                          <p className='text-xs text-gray-400 mt-1'>
-                            Last edited: {new Date(handbook.editedAt).toLocaleString()}
-                          </p>
+                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-28 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>
+                        <div className='w-32 px-6 py-4'>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(handbook.status)}`}>
+                            {handbook.status}
+                          </span>
+                        </div>
+                        <div className='w-20 px-6 py-4 flex items-center justify-end'>
+                          <button
+                            onClick={() => handleEdit(handbook)}
+                            className='text-blue-600 hover:text-blue-800 transition-colors'
+                            title='Edit'
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className='text-center py-12 text-gray-500'>No handbook yet. Click "Create Handbook" to upload the full student handbook.</div>
+              )}
+            </div>
+          )}
+
+          <div className='bg-white rounded-lg shadow-md mb-8'>
+            <div className='flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-gray-200'>
+              <div>
+                <h2 className='text-xl font-bold text-blue-950'>Handbook Section</h2>
+                <p className='text-sm text-gray-500'>Manage the uploaded PDF sections. Each submission must be approved by an admin.</p>
+              </div>
+              <div className='flex items-center gap-3'>
+                {!sectionsLoading && sectionsRefreshing && (
+                  <span className='text-xs font-semibold text-gray-400'>Refreshing…</span>
+                )}
+                <button
+                  onClick={() => openSectionModal(null)}
+                  disabled={!driveConnected}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
+                    driveConnected ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-400 text-white cursor-not-allowed'
+                  }`}
+                >
+                  Add Section
+                </button>
+              </div>
+            </div>
+            {sectionMessage && (
+              <div className={`mx-6 my-4 px-4 py-3 rounded-lg ${sectionMessageType === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                {sectionMessage}
+              </div>
+            )}
+            {isInitialSectionsLoad ? (
+              <div className='text-center py-12 text-gray-500'>Loading sections...</div>
+            ) : sidebarSections.length === 0 ? (
+              <div className='text-center py-12 text-gray-500'>No sections yet. Click "Add Section" to create one.</div>
+            ) : (
+              <div className='relative'>
+                {sectionsRefreshing && (
+                  <div className='absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center text-sm text-gray-500 rounded-b-lg z-10'>
+                    Updating sections…
+                  </div>
+                )}
+                <div className={sectionsRefreshing ? 'pointer-events-none opacity-50' : ''}>
+                  {sidebarSections.map((section, index) => (
+                    <div
+                      key={section._id}
+                      className={`flex flex-col md:flex-row md:items-center border-b border-gray-200 px-6 py-4 gap-4 ${
+                        index === sidebarSections.length - 1 ? 'border-b-0 rounded-b-lg' : ''
+                      }`}
+                    >
+                      <div className='flex-1'>
+                        <div className='flex flex-wrap items-center gap-2 mb-1'>
+                          <h3 className='text-lg font-semibold text-gray-800'>{section.title}</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            section.status === 'approved'
+                              ? 'bg-green-100 text-green-700'
+                              : section.status === 'rejected'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {section.status === 'approved' ? 'Approved' : section.status === 'rejected' ? 'Rejected' : 'Pending Approval'}
+                          </span>
+                        </div>
+                        {section.description && (
+                          <p className='text-sm text-gray-600'>{section.description}</p>
                         )}
-                        {handbook.priorityEditor && handbook.priorityEditStartedAt && (
-                          <p className='text-xs text-gray-500 mt-1'>
-                            Clicked Edit at: {new Date(handbook.priorityEditStartedAt).toLocaleString()}
-                          </p>
+                        <p className='text-xs text-gray-400 mt-1'>Order: {section.order ?? 0}</p>
+                        {section.status !== 'approved' && (
+                          <p className='text-xs text-orange-600 mt-1'>Waiting for admin approval before publishing.</p>
+                        )}
+                        {section.status === 'rejected' && (
+                          <p className='text-xs text-red-600 mt-1'>Rejected by admin. Please upload a revised PDF.</p>
                         )}
                       </div>
-                      <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
-                      <div className='w-28 px-6 py-4 text-sm text-gray-600'>{createdAt}</div>
-                      <div className='w-32 px-6 py-4'>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(handbook.status)}`}>
-                          {handbook.status}
-                        </span>
-                      </div>
-                      <div className='w-20 px-6 py-4 flex items-center justify-end'>
+                      <div className='flex items-center gap-2'>
                         <button
-                          onClick={() => handleEdit(handbook)}
-                          className='text-blue-600 hover:text-blue-800 transition-colors'
-                          title='Edit'
+                          onClick={() => openSectionModal(section)}
+                          className='px-4 py-2 text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors'
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
+                          Edit
                         </button>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            ) : (
-              <div className='text-center py-12 text-gray-500'>No handbook yet. Click "Create Handbook" to upload the full student handbook.</div>
             )}
           </div>
           </>
@@ -659,6 +897,100 @@ const PresidentHandbook = () => {
                   }`}
                 >
                   Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {sectionModalOpen && (
+        <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
+          <div className='bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto'>
+            <h2 className='text-2xl font-bold mb-6 text-blue-950'>
+              {editingSection ? 'Edit Sidebar Section' : 'Add Sidebar Section'}
+            </h2>
+            {sectionMessageType === 'error' && sectionMessage && (
+              <div className='mb-4 p-3 rounded-lg bg-red-50 text-red-800'>
+                {sectionMessage}
+              </div>
+            )}
+            <form onSubmit={handleSectionSubmit} className='space-y-4'>
+              <div>
+                <label className='block text-sm font-semibold text-gray-700 mb-2'>Title</label>
+                <input
+                  type='text'
+                  name='title'
+                  value={sectionForm.title}
+                  onChange={handleSectionInputChange}
+                  className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black'
+                  required
+                />
+              </div>
+              <div>
+                <label className='block text-sm font-semibold text-gray-700 mb-2'>Description</label>
+                <textarea
+                  name='description'
+                  value={sectionForm.description}
+                  onChange={handleSectionInputChange}
+                  rows={3}
+                  className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black'
+                  placeholder='Optional description'
+                />
+              </div>
+              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                <div>
+                  <label className='block text-sm font-semibold text-gray-700 mb-2'>Order</label>
+                  <input
+                    type='number'
+                    name='order'
+                    value={sectionForm.order}
+                    onChange={handleSectionInputChange}
+                    className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black'
+                  />
+                </div>
+                <div className='flex items-center gap-2 mt-6 md:mt-8'>
+                  <input
+                    type='checkbox'
+                    id='section-published'
+                    name='published'
+                    checked={sectionForm.published}
+                    onChange={handleSectionInputChange}
+                    className='h-4 w-4 text-blue-600 border-gray-300 rounded'
+                  />
+                  <label htmlFor='section-published' className='text-sm text-gray-700'>
+                    Visible to students
+                  </label>
+                </div>
+              </div>
+              <div>
+                <label className='block text-sm font-semibold text-gray-700 mb-2'>
+                  PDF File {editingSection ? '(optional)' : ''}
+                </label>
+                <input
+                  type='file'
+                  accept='application/pdf'
+                  onChange={handleSectionFileChange}
+                  className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 text-black'
+                  required={!editingSection}
+                />
+                <p className='text-xs text-gray-500 mt-1'>Upload the PDF to display when students select this section.</p>
+              </div>
+              <div className='flex justify-end gap-3 pt-4'>
+                <button
+                  type='button'
+                  onClick={closeSectionModal}
+                  className='px-6 py-2 rounded-lg font-semibold bg-gray-200 hover:bg-gray-300 text-gray-800 transition-colors'
+                  disabled={sectionSubmitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type='submit'
+                  disabled={sectionSubmitting}
+                  className='px-6 py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                >
+                  {sectionSubmitting ? 'Saving...' : editingSection ? 'Update Section' : 'Create Section'}
                 </button>
               </div>
             </form>

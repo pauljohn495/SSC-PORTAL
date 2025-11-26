@@ -1,8 +1,12 @@
 import User from '../models/User.js';
 import { getFirebaseAdmin } from '../config/firebaseAdmin.js';
 
-export const sendPushToAllUsers = async (title, body) => {
-	const users = await User.find({ fcmTokens: { $exists: true, $ne: [] } }, { fcmTokens: 1 });
+export const sendPushToAllUsers = async (title, body, userFilter = {}) => {
+	const query = {
+		fcmTokens: { $exists: true, $ne: [] },
+		...userFilter,
+	};
+	const users = await User.find(query, { fcmTokens: 1 });
 	const tokens = users.flatMap(u => Array.isArray(u.fcmTokens) ? u.fcmTokens : []);
 	if (tokens.length === 0) return { successCount: 0, failureCount: 0 };
 	const admin = getFirebaseAdmin();

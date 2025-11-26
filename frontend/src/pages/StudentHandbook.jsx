@@ -25,12 +25,17 @@ const StudentHandbook = () => {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
   const [isSearching, setIsSearching] = useState(false)
   const [viewerPage, setViewerPage] = useState(1)
-  const [renderingPage, setRenderingPage] = useState(false)
   const [renderScale, setRenderScale] = useState(1)
+  const [renderingPage, setRenderingPage] = useState(false)
   const [renderError, setRenderError] = useState('')
   const [containerWidth, setContainerWidth] = useState(0)
   const [canvasDimensions, setCanvasDimensions] = useState({ width: 0, height: 0 })
+  const [sidebarSections, setSidebarSections] = useState([])
+  const [sidebarLoading, setSidebarLoading] = useState(true)
+  const [sidebarError, setSidebarError] = useState('')
+  const [activeDocumentId, setActiveDocumentId] = useState(null)
   const pdfLoadingTaskRef = useRef(null)
+  const renderTaskRef = useRef(null)
   const textLayerCacheRef = useRef(new Map())
   const downloadMenuRef = useRef(null)
   const canvasRef = useRef(null)
@@ -73,18 +78,83 @@ const StudentHandbook = () => {
     return ''
   }, [])
 
+  const resolveSectionFileUrl = useCallback((section) => {
+    if (!section) return ''
+    if (section._id) {
+      return `${API_BASE_URL}/handbook-sections/${section._id}/file`
+    }
+    if (section.fileUrl) {
+      if (section.fileUrl.startsWith('http')) {
+        return section.fileUrl
+      }
+      return `http://localhost:5001/${section.fileUrl}`
+    }
+    return ''
+  }, [])
+
+  const resolveSectionViewerUrl = useCallback((section) => {
+    if (!section) return ''
+    if (section.googleDrivePreviewUrl) {
+      return section.googleDrivePreviewUrl
+    }
+    const fileUrl = resolveSectionFileUrl(section)
+    if (!fileUrl) return ''
+    return `https://drive.google.com/viewerng/viewer?embedded=true&url=${encodeURIComponent(fileUrl)}`
+  }, [resolveSectionFileUrl])
+
   // Get the current handbook (should be only one)
   const currentHandbook = handbookPages && Array.isArray(handbookPages) && handbookPages.length > 0 ? handbookPages[0] : null
+  const documents = useMemo(() => {
+    const docList = []
+    if (currentHandbook) {
+      docList.push({
+        id: currentHandbook._id || 'handbook',
+        title: currentHandbook.fileName || 'Student Handbook',
+        description: 'Main handbook document',
+        fileUrl: resolveHandbookFileUrl(currentHandbook),
+        viewerUrl: resolveViewerUrl(currentHandbook),
+        fileName: currentHandbook.fileName || 'Student-Handbook.pdf',
+        type: 'handbook'
+      })
+    }
+    if (Array.isArray(sidebarSections) && sidebarSections.length > 0) {
+      sidebarSections.forEach((section) => {
+        docList.push({
+          id: `section-${section._id}`,
+          title: section.title,
+          description: section.description,
+          fileUrl: resolveSectionFileUrl(section),
+          viewerUrl: resolveSectionViewerUrl(section),
+          fileName: section.fileName || `${section.title || 'Section'}.pdf`,
+          type: 'section'
+        })
+      })
+    }
+    return docList
+  }, [currentHandbook, sidebarSections, resolveHandbookFileUrl, resolveViewerUrl, resolveSectionFileUrl, resolveSectionViewerUrl])
 
-  const searchFileUrl = useMemo(
-    () => resolveHandbookFileUrl(currentHandbook),
-    [currentHandbook, resolveHandbookFileUrl]
+  useEffect(() => {
+    if (!documents.length) {
+      setActiveDocumentId(null)
+      return
+    }
+    if (!activeDocumentId || !documents.some((doc) => doc.id === activeDocumentId)) {
+      setActiveDocumentId(documents[0].id)
+    }
+  }, [documents, activeDocumentId])
+
+  const activeDocument = useMemo(
+    () => documents.find((doc) => doc.id === activeDocumentId) || null,
+    [documents, activeDocumentId]
   )
 
-  const viewerUrl = useMemo(
-    () => resolveViewerUrl(currentHandbook),
-    [currentHandbook, resolveViewerUrl]
-  )
+  const handleSelectDocument = useCallback((docId) => {
+    setActiveDocumentId((prev) => (prev === docId ? prev : docId))
+  }, [])
+
+  const searchFileUrl = activeDocument?.fileUrl || ''
+
+  const viewerUrl = activeDocument?.viewerUrl || ''
 
   const viewerSrc = useMemo(() => {
     if (!viewerUrl) return ''
@@ -178,6 +248,29 @@ const StudentHandbook = () => {
     }
   }, [])
 
+  const fetchSidebarSections = useCallback(async () => {
+    try {
+      setSidebarLoading(true)
+      setSidebarError('')
+      const response = await fetch(`${API_BASE_URL}/handbook-sections`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch sections: ${response.statusText}`)
+      }
+      const data = await response.json()
+      if (!Array.isArray(data)) {
+        setSidebarSections([])
+        return
+      }
+      setSidebarSections(data)
+    } catch (error) {
+      console.error('Error fetching sidebar sections:', error)
+      setSidebarError('Failed to load handbook sidebar sections.')
+      setSidebarSections([])
+    } finally {
+      setSidebarLoading(false)
+    }
+  }, [])
+
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -188,8 +281,9 @@ const StudentHandbook = () => {
   useEffect(() => {
     if (user) {
       fetchHandbook()
+      fetchSidebarSections()
     }
-  }, [user, fetchHandbook])
+  }, [user, fetchHandbook, fetchSidebarSections])
 
   useEffect(() => {
     textLayerCacheRef.current = new Map()
@@ -220,27 +314,6 @@ const StudentHandbook = () => {
       }
     }
   }, [pdfArrayBuffer])
-
-  useEffect(() => {
-    const element = canvasContainerRef.current
-    if (!element) return
-    const updateSize = () => {
-      setContainerWidth(element.clientWidth || 0)
-    }
-    updateSize()
-    let resizeObserver = null
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(updateSize)
-      resizeObserver.observe(element)
-    }
-    window.addEventListener('resize', updateSize)
-    return () => {
-      if (resizeObserver) {
-        resizeObserver.disconnect()
-      }
-      window.removeEventListener('resize', updateSize)
-    }
-  }, [pdfDoc])
 
   useEffect(() => {
     if (!searchResults.length) {
@@ -277,23 +350,23 @@ const StudentHandbook = () => {
     navigate('/login')
   }
 
-  const downloadHandbook = () => {
-    if (!currentHandbook) return
-    const fileUrl = resolveHandbookFileUrl(currentHandbook)
+  const downloadActiveDocument = () => {
+    if (!activeDocument) return
+    const fileUrl = activeDocument.fileUrl
 
     if (!fileUrl) {
       Swal.fire({
         icon: 'warning',
         title: 'File Not Available',
-        text: 'Handbook file not available for download',
+        text: 'Document file not available for download',
         confirmButtonColor: '#2563eb'
       })
       return
     }
 
       const link = document.createElement('a')
-      link.href = fileUrl
-      link.download = currentHandbook.fileName || 'Student-Handbook.pdf'
+    link.href = fileUrl
+    link.download = activeDocument.fileName || `${activeDocument.title || 'Document'}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -444,10 +517,16 @@ const StudentHandbook = () => {
   }
 
   useEffect(() => {
-    if (!currentHandbook) {
+    if (!activeDocument?.id) {
       setViewerPage(1)
+      return
     }
-  }, [currentHandbook])
+    textLayerCacheRef.current = new Map()
+    setSearchResults([])
+    setCurrentMatchIndex(-1)
+    setSearchTerm('')
+      setViewerPage(1)
+  }, [activeDocument?.id])
 
   useEffect(() => {
     if (currentMatchIndex < 0 || currentMatchIndex >= searchResults.length) {
@@ -455,7 +534,8 @@ const StudentHandbook = () => {
     }
 
     const activeMatch = searchResults[currentMatchIndex]
-    setViewerPage(activeMatch.pageIndex + 1)
+    const targetPageNumber = activeMatch.pageIndex + 1
+    setViewerPage(targetPageNumber)
   }, [currentMatchIndex, searchResults])
 
   useEffect(() => {
@@ -465,17 +545,56 @@ const StudentHandbook = () => {
       const clamped = Math.min(Math.max(nextPage, 1), pdfDoc.numPages)
       return clamped
     })
-    setRenderError('')
   }, [pdfDoc])
+
+  useEffect(() => {
+    const element = canvasContainerRef.current
+    if (!element) return
+    const updateSize = () => {
+      setContainerWidth(element.clientWidth || 0)
+    }
+    updateSize()
+    let resizeObserver = null
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(updateSize)
+      resizeObserver.observe(element)
+    }
+    window.addEventListener('resize', updateSize)
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect()
+      }
+      window.removeEventListener('resize', updateSize)
+    }
+  }, [pdfDoc, activeDocument?.id])
 
   useEffect(() => {
     if (!pdfDoc || !viewerPage || !canvasRef.current) return
     let isCancelled = false
-    let renderTask = null
+    const cancelCurrentRender = async () => {
+      if (renderTaskRef.current) {
+        const task = renderTaskRef.current
+        try {
+          task.cancel()
+        } catch {}
+        try {
+          await task.promise
+        } catch (err) {
+          if (err?.name !== 'RenderingCancelledException') {
+            throw err
+          }
+        }
+        if (renderTaskRef.current === task) {
+          renderTaskRef.current = null
+        }
+      }
+    }
     const renderPage = async () => {
       setRenderingPage(true)
       setRenderError('')
+      let currentTask = null
       try {
+        await cancelCurrentRender()
         const safePage = Math.min(Math.max(viewerPage, 1), pdfDoc.numPages)
         if (safePage !== viewerPage) {
           setViewerPage(safePage)
@@ -491,17 +610,21 @@ const StudentHandbook = () => {
         canvas.width = viewport.width
         canvas.height = viewport.height
         context.clearRect(0, 0, canvas.width, canvas.height)
-        renderTask = page.render({ canvasContext: context, viewport })
-        await renderTask.promise
+        currentTask = page.render({ canvasContext: context, viewport })
+        renderTaskRef.current = currentTask
+        await currentTask.promise
         if (!isCancelled) {
           setCanvasDimensions({ width: viewport.width, height: viewport.height })
         }
       } catch (error) {
-        if (!isCancelled) {
+        if (!isCancelled && error?.name !== 'RenderingCancelledException') {
           console.error('Error rendering PDF page:', error)
           setRenderError('Failed to render handbook page.')
         }
       } finally {
+        if (currentTask && renderTaskRef.current === currentTask) {
+          renderTaskRef.current = null
+        }
         if (!isCancelled) {
           setRenderingPage(false)
         }
@@ -510,9 +633,7 @@ const StudentHandbook = () => {
     renderPage()
     return () => {
       isCancelled = true
-      if (renderTask?.cancel) {
-        renderTask.cancel()
-      }
+      cancelCurrentRender().catch(() => {})
     }
   }, [pdfDoc, viewerPage, renderScale, containerWidth])
 
@@ -574,7 +695,7 @@ const StudentHandbook = () => {
             <div className='flex-1'></div>
             <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>STUDENT HANDBOOK</h1>
             {/* Download Button */}
-            {!loading && currentHandbook ? (
+            {!loading && activeDocument ? (
               <div className='relative flex-1 flex justify-end' ref={downloadMenuRef}>
                 <button
                   onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
@@ -588,10 +709,10 @@ const StudentHandbook = () => {
                 {downloadMenuOpen && (
                   <div className='absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg z-50 border border-gray-200'>
                     <button
-                      onClick={downloadHandbook}
+                      onClick={downloadActiveDocument}
                       className='block w-full text-left px-4 py-3 hover:bg-gray-100 transition rounded-lg text-black'
                     >
-                      Download Handbook
+                      Download PDF
                     </button>
                   </div>
                 )}
@@ -604,211 +725,264 @@ const StudentHandbook = () => {
 
           {loading ? (
             <p className='text-center text-gray-500'>Loading...</p>
-          ) : !currentHandbook ? (
+          ) : documents.length === 0 ? (
             <div className='text-center py-12'>
               <p className='text-gray-500 text-lg mb-2'>
                 No handbook content available yet.
               </p>
             </div>
           ) : (
-            <div className='space-y-6'>
-              {handbookError && (
-                <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg'>
-                  {handbookError}
-                </div>
-              )}
-
-              {pdfDoc && (
-                <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-4'>
-                  <form onSubmit={handleSearchSubmit} className='flex flex-col gap-3 lg:flex-row lg:items-center'>
-                    <input
-                      type='text'
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      placeholder='Search inside the handbook...'
-                      className='flex-1 rounded-lg border border-gray-300 px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500'
-                      disabled={!pdfDoc || pdfSearchLoading}
-                    />
-                    <div className='flex gap-2'>
-                      <button
-                        type='submit'
-                        className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300'
-                        disabled={!pdfDoc || pdfSearchLoading || isSearching || !searchTerm.trim()}
-                      >
-                        {isSearching ? 'Searching...' : 'Search'}
-                      </button>
-                      <button
-                        type='button'
-                        onClick={handleClearSearch}
-                        className='px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition disabled:bg-gray-50'
-                        disabled={!searchTerm && !searchResults.length}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </form>
-
-                  <div className='flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600'>
-                    <span className='text-xs text-gray-500'>
-                      {pdfSearchLoading ? 'Preparing search index...' : pdfDoc ? 'Search ready' : 'Search unavailable'}
-                    </span>
-                    <span className='font-semibold text-gray-700'>
-                      {searchResults.length > 0
-                        ? `Match ${currentMatchIndex + 1} of ${searchResults.length}`
-                        : 'No matches yet'}
-                    </span>
-                    <div className='flex gap-2'>
-                      <button
-                        type='button'
-                        onClick={() => goToMatch(-1)}
-                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
-                        disabled={searchResults.length === 0}
-                      >
-                        Prev
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => goToMatch(1)}
-                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
-                        disabled={searchResults.length === 0}
-                      >
-                        Next
-                      </button>
-                    </div>
+            <div className='flex flex-col lg:flex-row gap-6'>
+              <aside className='w-full lg:w-64 space-y-4'>
+                <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4'>
+                  <div className='flex items-center justify-between mb-3'>
+                    <h2 className='text-base font-semibold text-blue-950'>Handbook Sections</h2>
+                    {sidebarLoading && <span className='text-xs text-gray-400'>Loading...</span>}
                   </div>
-
-                  {searchResults.length > 0 && (
-                    <div className='max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100'>
-                      {searchResults.map((match, index) => (
+                  {sidebarError && (
+                    <p className='text-xs text-red-500 mb-2'>{sidebarError}</p>
+                  )}
+                  <div className='space-y-2 max-h-[60vh] overflow-y-auto'>
+                    {documents.map((doc) => {
+                      const isActive = doc.id === activeDocument?.id
+                      return (
                         <button
                           type='button'
-                          key={match.id}
-                          onClick={() => setCurrentMatchIndex(index)}
-                          className={`w-full text-left px-3 py-2 hover:bg-blue-50 transition ${
-                            currentMatchIndex === index ? 'bg-blue-50' : ''
+                          key={doc.id}
+                          onClick={() => handleSelectDocument(doc.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition ${
+                            isActive
+                              ? 'border-blue-600 bg-blue-50 text-blue-900'
+                              : 'border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 text-gray-700'
                           }`}
                         >
-                          <div className='flex items-center justify-between text-xs font-semibold text-gray-700'>
-                            <span>Page {match.pageIndex + 1}</span>
-                            {currentMatchIndex === index && <span className='text-blue-600'>Active</span>}
+                          <div className='flex items-center justify-between'>
+                            <span className='font-semibold'>{doc.title}</span>
+                            {doc.type === 'handbook' && (
+                              <span className='text-[10px] uppercase font-semibold text-blue-600'>Main</span>
+                            )}
                           </div>
-                          <p className='text-xs text-gray-500 truncate'>
-                            {match.snippet?.length > 120 ? `${match.snippet.slice(0, 117)}...` : match.snippet}
-                          </p>
+                          {doc.description && (
+                            <p className='text-xs text-gray-500 mt-1 line-clamp-2'>{doc.description}</p>
+                          )}
                         </button>
-                      ))}
-                    </div>
-                  )}
+                      )
+                    })}
+                  </div>
                 </div>
-              )}
+              </aside>
+              <div className='flex-1 min-w-0 space-y-6'>
+                {handbookError && (
+                  <div className='bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg'>
+                    {handbookError}
+                  </div>
+                )}
 
-              {pdfDoc ? (
-                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden'>
-                  <div className='flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4 text-sm text-gray-700'>
-                    <div className='font-semibold'>
-                      Page {viewerPage} of {pdfDoc?.numPages || '?'}
-                    </div>
-                    <div className='flex gap-2'>
-                      <button
-                        type='button'
-                        onClick={() => goToPageManually(-1)}
-                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
-                        disabled={viewerPage <= 1}
-                      >
-                        Prev Page
-                      </button>
-                      <button
-                        type='button'
-                        onClick={() => goToPageManually(1)}
-                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
-                        disabled={viewerPage >= (pdfDoc?.numPages || viewerPage)}
-                      >
-                        Next Page
-                      </button>
-                    </div>
-                    <div className='flex items-center gap-2'>
-                      <button
-                        type='button'
-                        onClick={handleZoomOut}
-                        className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
-                      >
-                        -
-                      </button>
-                      <span className='min-w-[48px] text-center font-semibold'>
-                        {Math.round(renderScale * 100)}%
+                {activeDocument && (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4 flex flex-col gap-1'>
+                    <p className='text-xs uppercase text-gray-500 tracking-wide'>Active Document</p>
+                    <h2 className='text-2xl font-semibold text-blue-950'>{activeDocument.title}</h2>
+                    {activeDocument.description && (
+                      <p className='text-sm text-gray-600'>{activeDocument.description}</p>
+                    )}
+                  </div>
+                )}
+
+                {pdfDoc && (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-4'>
+                    <form onSubmit={handleSearchSubmit} className='flex flex-col gap-3 lg:flex-row lg:items-center'>
+                      <input
+                        type='text'
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder='Search inside the current document...'
+                        className='flex-1 rounded-lg border border-gray-300 px-4 py-2 text-black focus:outline-none focus:ring-2 focus:ring-blue-500'
+                        disabled={!pdfDoc || pdfSearchLoading}
+                      />
+                      <div className='flex gap-2'>
+                        <button
+                          type='submit'
+                          className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-blue-300'
+                          disabled={!pdfDoc || pdfSearchLoading || isSearching || !searchTerm.trim()}
+                        >
+                          {isSearching ? 'Searching...' : 'Search'}
+                        </button>
+                        <button
+                          type='button'
+                          onClick={handleClearSearch}
+                          className='px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition disabled:bg-gray-50'
+                          disabled={!searchTerm && !searchResults.length}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </form>
+
+                    <div className='flex flex-wrap items-center justify-between gap-3 text-sm text-gray-600'>
+                      <span className='text-xs text-gray-500'>
+                        {pdfSearchLoading ? 'Preparing search index...' : pdfDoc ? 'Search ready' : 'Search unavailable'}
                       </span>
-                      <button
-                        type='button'
-                        onClick={handleZoomIn}
-                        className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
-                      >
-                        +
-                      </button>
-                      <button
-                        type='button'
-                        onClick={handleZoomReset}
-                        className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
-                      >
-                        Reset
-                      </button>
+                      <span className='font-semibold text-gray-700'>
+                        {searchResults.length > 0
+                          ? `Match ${currentMatchIndex + 1} of ${searchResults.length}`
+                          : 'No matches yet'}
+                      </span>
+                      <div className='flex gap-2'>
+                        <button
+                          type='button'
+                          onClick={() => goToMatch(-1)}
+                          className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                          disabled={searchResults.length === 0}
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => goToMatch(1)}
+                          className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                          disabled={searchResults.length === 0}
+                        >
+                          Next
+                        </button>
+                      </div>
                     </div>
+
+                    {searchResults.length > 0 && (
+                      <div className='max-h-48 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100'>
+                        {searchResults.map((match, index) => (
+                          <button
+                            type='button'
+                            key={match.id}
+                            onClick={() => setCurrentMatchIndex(index)}
+                            className={`w-full text-left px-3 py-2 hover:bg-blue-50 transition ${
+                              currentMatchIndex === index ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className='flex items-center justify-between text-xs font-semibold text-gray-700'>
+                              <span>Page {match.pageIndex + 1}</span>
+                              {currentMatchIndex === index && <span className='text-blue-600'>Active</span>}
+                            </div>
+                            <p className='text-xs text-gray-500 truncate'>
+                              {match.snippet?.length > 120 ? `${match.snippet.slice(0, 117)}...` : match.snippet}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {renderError && (
-                    <div className='bg-red-50 text-red-700 border border-red-100 mx-4 mt-4 mb-2 rounded-lg px-4 py-2 text-sm'>
-                      {renderError}
+                )}
+
+                {pdfDoc ? (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden'>
+                    <div className='flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-4 text-sm text-gray-700'>
+                      <div className='flex flex-col gap-1'>
+                        <p className='font-semibold text-gray-800'>
+                          Page {viewerPage} of {pdfDoc?.numPages || '?'}
+                        </p>
+                        <p className='text-xs text-gray-500'>Use the controls to move between pages.</p>
+                      </div>
+                      <div className='flex items-center gap-2'>
+                        <button
+                          type='button'
+                          onClick={() => goToPageManually(-1)}
+                          className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                          disabled={viewerPage <= 1}
+                        >
+                          Prev Page
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => goToPageManually(1)}
+                          className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition disabled:bg-gray-50 disabled:text-gray-400'
+                          disabled={viewerPage >= (pdfDoc?.numPages || viewerPage)}
+                        >
+                          Next Page
+                        </button>
+                      </div>
+                      <div className='flex items-center gap-2'>
+                        <button
+                          type='button'
+                          onClick={handleZoomOut}
+                          className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
+                        >
+                          -
+                        </button>
+                        <span className='min-w-[48px] text-center font-semibold'>
+                          {Math.round(renderScale * 100)}%
+                        </span>
+                        <button
+                          type='button'
+                          onClick={handleZoomIn}
+                          className='px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition'
+                        >
+                          +
+                        </button>
+                        <button
+                          type='button'
+                          onClick={handleZoomReset}
+                          className='px-3 py-1 rounded border border-gray-300 hover:bg-gray-100 transition text-sm'
+                        >
+                          Reset
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  <div
-                    ref={canvasContainerRef}
-                    className='bg-gray-50 flex justify-center overflow-auto p-4 min-h-[400px]'
-                  >
-                    <div className='relative inline-block shadow-lg rounded'>
-                      <canvas ref={canvasRef} className='bg-white rounded block' />
-                      {pageHighlights.map((highlight) => {
-                        const isActive = currentMatch?.id === highlight.id
-                        const width = canvasDimensions.width || 1
-                        const height = canvasDimensions.height || 1
-                        const style = {
-                          left: `${(highlight.rect.x || 0) * width}px`,
-                          top: `${(highlight.rect.y || 0) * height}px`,
-                          width: `${(highlight.rect.width || 0) * width}px`,
-                          height: `${(highlight.rect.height || 0) * height}px`,
-                        }
-                        return (
-                          <div
-                            key={highlight.id}
-                            className={`absolute border ${
-                              isActive
-                                ? 'bg-blue-500/30 border-blue-500'
-                                : 'bg-yellow-300/30 border-yellow-400'
-                            } pointer-events-none rounded-sm`}
-                            style={style}
-                          />
-                        )
-                      })}
+                    {renderError && (
+                      <div className='bg-red-50 text-red-700 border border-red-100 mx-4 mt-4 mb-2 rounded-lg px-4 py-2 text-sm'>
+                        {renderError}
+                      </div>
+                    )}
+                    <div
+                      ref={canvasContainerRef}
+                      className='bg-gray-50 flex justify-center overflow-auto p-4 min-h-[400px] w-full max-w-full'
+                    >
+                      <div className='relative inline-block shadow-lg rounded max-w-full'>
+                        <canvas ref={canvasRef} className='bg-white rounded block' />
+                        {canvasDimensions.width > 0 &&
+                          pageHighlights.map((highlight) => {
+                            const isActive = currentMatch?.id === highlight.id
+                            const width = canvasDimensions.width || 1
+                            const height = canvasDimensions.height || 1
+                            const style = {
+                              left: `${Math.max(0, (highlight.rect?.x || 0) * width)}px`,
+                              top: `${Math.max(0, (highlight.rect?.y || 0) * height)}px`,
+                              width: `${Math.max(0, (highlight.rect?.width || 0) * width)}px`,
+                              height: `${Math.max(0, (highlight.rect?.height || 0) * height)}px`
+                            }
+                            return (
+                              <div
+                                key={highlight.id}
+                                className={`absolute border ${
+                                  isActive
+                                    ? 'bg-blue-500/30 border-blue-500'
+                                    : 'bg-yellow-300/30 border-yellow-400'
+                                } pointer-events-none rounded-sm`}
+                                style={style}
+                              />
+                            )
+                          })}
+                      </div>
                     </div>
+                    {renderingPage && (
+                      <p className='text-center text-xs text-gray-500 pb-4'>Rendering page...</p>
+                    )}
                   </div>
-                  {renderingPage && (
-                    <p className='text-center text-xs text-gray-500 pb-4'>Rendering page...</p>
-                  )}
-                </div>
-              ) : searchFileUrl ? (
-                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[400px] flex items-center justify-center'>
-                  <p className='text-gray-500 text-sm'>Preparing handbook viewer...</p>
-                </div>
-              ) : viewerUrl ? (
-                <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[600px]'>
-                  <iframe
-                    key={`${viewerPage}-${viewerUrl}`}
-                    src={viewerSrc}
-                    title='Student Handbook Viewer'
-                    className='w-full h-[80vh]'
-                    allowFullScreen
-                    loading='lazy'
-                  />
-                </div>
-              ) : currentHandbook?.content ? (
-                <div className='bg-white rounded-lg shadow-md p-8 prose max-w-none'>
+                ) : searchFileUrl ? (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[400px] flex items-center justify-center'>
+                    <p className='text-gray-500 text-sm'>Preparing handbook viewer...</p>
+                  </div>
+                ) : viewerUrl ? (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[600px]'>
+                    <iframe
+                      key={`${viewerPage}-${viewerUrl}`}
+                      src={viewerSrc}
+                      title='Student Handbook Viewer'
+                      className='w-full h-[80vh]'
+                      allowFullScreen
+                      loading='lazy'
+                    />
+                  </div>
+                ) : currentHandbook?.content ? (
+                  <div className='bg-white rounded-lg shadow-md p-8 prose max-w-none'>
                     <div className='text-gray-700 leading-relaxed whitespace-pre-wrap text-base'>
                       {currentHandbook.content}
                     </div>
@@ -819,6 +993,7 @@ const StudentHandbook = () => {
                   </div>
                 )}
               </div>
+            </div>
           )}
         </div>
       </main>

@@ -3,6 +3,9 @@ import { getAuthUrl, oauthCallback, listEvents, createEvent, updateEvent, archiv
 import {
   createHandbook,
   updateHandbook,
+  getHandbookSections,
+  createHandbookSection,
+  updateHandbookSection,
   getNotifications,
   createNotification,
   publishNotification,
@@ -36,6 +39,9 @@ router.get('/drive/status', getDriveConnectionStatus);
 // Handbook routes
 router.post('/handbook', createHandbook);
 router.put('/handbook/:id', updateHandbook);
+router.get('/handbook-sections', getHandbookSections);
+router.post('/handbook-sections', createHandbookSection);
+router.put('/handbook-sections/:id', updateHandbookSection);
 
 // Notifications routes
 router.get('/notifications', getNotifications);

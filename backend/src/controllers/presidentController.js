@@ -3,6 +3,7 @@ import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
 import Notification from '../models/Notification.js';
+import HandbookSection from '../models/HandbookSection.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
@@ -10,6 +11,7 @@ import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { extractTextFromPDF } from '../utils/pdfExtractor.js';
 import { google } from 'googleapis';
+import { getDepartments } from '../data/departments.js';
 
 // Helper function to create simplified log and set response header
 const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
@@ -794,6 +796,184 @@ export const clearHandbookPriority = async (req, res, next) => {
   }
 };
 
+// -------- Handbook Sidebar Sections --------
+
+export const getHandbookSections = async (req, res, next) => {
+  try {
+    const sections = await HandbookSection.find()
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email')
+      .sort({ order: 1, createdAt: 1 });
+    const response = sections;
+    logAndSetHeader(req, res, 'GET', '/api/president/handbook-sections', 200, { sections, count: sections.length });
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createHandbookSection = async (req, res, next) => {
+  try {
+    const {
+      userId,
+      title,
+      description,
+      order,
+      published = true,
+      fileUrl,
+      fileName,
+    } = req.body;
+
+    if (!userId) {
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      const response = { message: 'Only presidents can create sections' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 403, response);
+      return res.status(403).json(response);
+    }
+
+    if (!title || !fileUrl) {
+      const response = { message: 'Title and PDF file are required' };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const slug = await generateUniqueSectionSlug(title);
+
+    let base64Content = fileUrl;
+    if (fileUrl.includes(',')) {
+      base64Content = fileUrl.split(',')[1];
+    }
+    const pdfBuffer = Buffer.from(base64Content, 'base64');
+
+    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+    const driveFolderId = config.google.driveSectionsFolderId || config.google.driveFolderId || null;
+    const sanitizedFileName = (fileName || `${slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    const pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+
+    const section = new HandbookSection({
+      title,
+      description,
+      order: parseOrderValue(order, 0),
+      published: false,
+      slug,
+      fileUrl: driveResult.webContentLink || driveResult.previewUrl,
+      googleDriveFileId: driveResult.fileId,
+      googleDrivePreviewUrl: driveResult.previewUrl,
+      pdfContent,
+      createdBy: userId,
+      status: 'pending'
+    });
+
+    await section.save();
+
+    await logActivity(userId, 'handbook_section_create', `Created handbook sidebar section "${title}"`, {
+      sectionId: section._id,
+      title,
+    }, req);
+
+    const response = { message: 'Handbook sidebar section created', section };
+    logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 201, response);
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateHandbookSection = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      userId,
+      title,
+      description,
+      order,
+      published,
+      fileUrl,
+      fileName,
+    } = req.body;
+
+    if (!userId) {
+      const response = { message: 'User ID is required' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      const response = { message: 'Only presidents can update sections' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (title && title.trim() && title !== section.title) {
+      section.title = title.trim();
+      section.slug = await generateUniqueSectionSlug(section.title);
+    }
+    if (typeof description === 'string') {
+      section.description = description;
+    }
+    if (typeof order !== 'undefined') {
+      section.order = parseOrderValue(order, section.order);
+    }
+    if (fileUrl) {
+      const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+      const { deletePDFFile } = await import('../utils/fileStorage.js');
+
+      if (section.googleDriveFileId) {
+        await deleteFileFromDrive(section.googleDriveFileId, userId);
+      } else if (section.fileUrl && !section.fileUrl.startsWith('http')) {
+        deletePDFFile(section.fileUrl);
+      }
+
+      let base64Data = fileUrl;
+      if (fileUrl.includes(',')) {
+        base64Data = fileUrl.split(',')[1];
+      }
+      const pdfBuffer = Buffer.from(base64Data, 'base64');
+      const sanitizedFileName = (fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+      const driveFolderId = config.google.driveSectionsFolderId || config.google.driveFolderId || null;
+      const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+
+      section.fileUrl = driveResult.webContentLink || driveResult.previewUrl;
+      section.googleDriveFileId = driveResult.fileId;
+      section.googleDrivePreviewUrl = driveResult.previewUrl;
+      section.pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+    }
+
+    section.status = 'pending';
+    section.published = false;
+    section.approvedBy = null;
+    section.approvedAt = null;
+    section.updatedBy = userId;
+    await section.save();
+
+    await logActivity(userId, 'handbook_section_update', `Updated handbook sidebar section "${section.title}"`, {
+      sectionId: section._id,
+      title: section.title,
+    }, req);
+
+    const response = { message: 'Section updated successfully', section };
+    logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get user-specific activity logs
 export const getUserActivityLogs = async (req, res, next) => {
   try {
@@ -817,10 +997,70 @@ export const getUserActivityLogs = async (req, res, next) => {
   }
 };
 
+const DEPARTMENT_LIST = getDepartments();
+
+const slugify = (text = '') =>
+  text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+
+const generateUniqueSectionSlug = async (title) => {
+  const baseSlug = slugify(title) || `section-${Date.now()}`;
+  let slug = baseSlug;
+  let counter = 1;
+  // Loop until slug is unique
+  // eslint-disable-next-line no-await-in-loop
+  while (await HandbookSection.exists({ slug })) {
+    slug = `${baseSlug}-${counter}`;
+    counter += 1;
+  }
+  return slug;
+};
+
+const parseOrderValue = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeDepartmentTargets = ({ targetScope, departments = [], rangeStart, rangeEnd }) => {
+  if (targetScope === 'departments') {
+    const cleaned = departments
+      .map((dept) => (typeof dept === 'string' ? dept.trim() : ''))
+      .filter(Boolean)
+      .filter((dept) => DEPARTMENT_LIST.includes(dept));
+    return Array.from(new Set(cleaned));
+  }
+  if (targetScope === 'range') {
+    if (!rangeStart || !rangeEnd) {
+      return [];
+    }
+    const startIdx = DEPARTMENT_LIST.indexOf(rangeStart);
+    const endIdx = DEPARTMENT_LIST.indexOf(rangeEnd);
+    if (startIdx === -1 || endIdx === -1) {
+      return [];
+    }
+    const [from, to] = startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+    return DEPARTMENT_LIST.slice(from, to + 1);
+  }
+  return [];
+};
+
 // Create notification (only president)
 export const createNotification = async (req, res, next) => {
   try {
-    const { title, message, userId } = req.body;
+    const {
+      title,
+      message,
+      userId,
+      targetScope = 'all',
+      departments = [],
+      rangeStart,
+      rangeEnd
+    } = req.body;
 
     if (!userId) {
       const response = { message: 'User ID is required' };
@@ -848,7 +1088,34 @@ export const createNotification = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
-    const notification = new Notification({ title, message, createdBy: userId });
+    if (!['all', 'departments', 'range'].includes(targetScope)) {
+      const response = { message: 'Invalid target scope' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const resolvedDepartments = normalizeDepartmentTargets({
+      targetScope,
+      departments,
+      rangeStart,
+      rangeEnd
+    });
+
+    if (targetScope !== 'all' && resolvedDepartments.length === 0) {
+      const response = { message: 'Please select at least one valid department' };
+      logAndSetHeader(req, res, 'POST', '/api/president/notifications', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const notification = new Notification({
+      title,
+      message,
+      createdBy: userId,
+      targetScope,
+      targetDepartments: resolvedDepartments,
+      rangeStart: targetScope === 'range' ? rangeStart : undefined,
+      rangeEnd: targetScope === 'range' ? rangeEnd : undefined,
+    });
     await notification.save();
 
     await logActivity(userId, 'notification_create', `Notification "${title}" created`, { 
@@ -895,9 +1162,16 @@ export const publishNotification = async (req, res, next) => {
     notification.publishedAt = new Date();
     await notification.save();
 
-    // Send email to all users
+    const departmentFilter = (notification.targetScope !== 'all' && notification.targetDepartments?.length)
+      ? { department: { $in: notification.targetDepartments } }
+      : {};
+
+    // Send email to target users
     try {
-      const allUsers = await User.find({ email: { $exists: true, $ne: null } });
+      const allUsers = await User.find({
+        email: { $exists: true, $ne: null },
+        ...departmentFilter,
+      });
       
       const transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -935,9 +1209,9 @@ export const publishNotification = async (req, res, next) => {
       // Continue even if email fails
     }
 
-    // Send push to all users 
+    // Send push to target users 
     try {
-      await sendPushToAllUsers(notification.title, notification.message);
+      await sendPushToAllUsers(notification.title, notification.message, departmentFilter);
     } catch (pushErr) {
       console.error('Error sending push notifications:', pushErr);
     }

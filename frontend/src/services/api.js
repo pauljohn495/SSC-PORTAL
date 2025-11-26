@@ -116,6 +116,17 @@ export const adminAPI = {
   getArchivedItems: () => apiRequest('/admin/archived'),
 };
 
+const buildQueryString = (params = {}) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && value.trim() === '') return;
+    searchParams.append(key, value);
+  });
+  const query = searchParams.toString();
+  return query ? `?${query}` : '';
+};
+
 // President API
 export const presidentAPI = {
   // Memorandum routes
@@ -153,6 +164,19 @@ export const presidentAPI = {
     method: 'POST',
     body: { userId },
   }),
+  getHandbookSections: () => apiRequest('/president/handbook-sections'),
+  createHandbookSection: (data) => apiRequest('/president/handbook-sections', {
+    method: 'POST',
+    body: data,
+  }),
+  updateHandbookSection: (id, data) => apiRequest(`/president/handbook-sections/${id}`, {
+    method: 'PUT',
+    body: data,
+  }),
+  deleteHandbookSection: (id, data) => apiRequest(`/president/handbook-sections/${id}`, {
+    method: 'DELETE',
+    body: data,
+  }),
   
   // Activity logs
   getUserActivityLogs: (userId) => apiRequest(`/president/activity-logs?userId=${userId}`),
@@ -177,7 +201,9 @@ export const presidentAPI = {
 export const publicAPI = {
   getPublicHandbooks: () => apiRequest('/handbook'),
   getPublicMemorandums: () => apiRequest('/memorandums'),
-  getPublicNotifications: () => apiRequest('/notifications'),
+  getPublicNotifications: (params) => apiRequest(`/notifications${buildQueryString(params)}`),
+  getHandbookSections: () => apiRequest('/handbook-sections'),
+  getDepartments: () => apiRequest('/departments'),
 };
 
 export default {
