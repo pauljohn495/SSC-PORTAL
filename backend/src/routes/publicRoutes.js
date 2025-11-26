@@ -1,6 +1,7 @@
 import express from 'express';
 import * as publicController from '../controllers/publicController.js';
 import { searchContent } from '../controllers/searchController.js';
+import { getStudentPolicies, streamPolicySectionFile } from '../controllers/policyController.js';
 
 const router = express.Router();
 
@@ -14,6 +15,8 @@ router.get('/notifications', publicController.getPublicNotifications);
 router.get('/departments', publicController.getDepartmentsCatalog);
 router.post('/notifications/test-push', publicController.sendTestPush);
 router.get('/search', searchContent);
+router.get('/policies', getStudentPolicies);
+router.get('/policies/sections/:sectionId/file', streamPolicySectionFile);
 
 export default router;
 

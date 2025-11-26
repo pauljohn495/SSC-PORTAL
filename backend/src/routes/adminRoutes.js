@@ -1,5 +1,6 @@
 import express from 'express';
 import * as adminController from '../controllers/adminController.js';
+import { getPolicySectionsForReview, reviewPolicySection, deletePolicySectionAdmin } from '../controllers/policyController.js';
 
 const router = express.Router();
 
@@ -31,6 +32,11 @@ router.delete('/memorandums/:id/permanent', adminController.permanentlyDeleteMem
 // Activity logs
 router.get('/activity-logs', adminController.getActivityLogs);
 router.get('/archived', adminController.getArchivedItems);
+
+// Policy review
+router.get('/policies/sections', getPolicySectionsForReview);
+router.put('/policies/sections/:sectionId/status', reviewPolicySection);
+router.delete('/policies/sections/:id', deletePolicySectionAdmin);
 
 export default router;
 

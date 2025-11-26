@@ -5,19 +5,31 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../../uploads/handbooks');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+const rootUploadsDir = path.join(__dirname, '../../uploads');
+
+const ensureDirectory = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+  return dirPath;
+};
+
+ensureDirectory(rootUploadsDir);
+
+const resolveSubdirectory = (subdirectory = 'handbooks') => {
+  const safeSubdir = subdirectory.replace(/[^a-z0-9/_-]/gi, '');
+  const targetDir = path.join(rootUploadsDir, safeSubdir);
+  return ensureDirectory(targetDir);
+};
 
 /**
  * Save base64 PDF to filesystem
  * @param {string} base64Data - Base64 encoded PDF data (with or without data URL prefix)
  * @param {string} fileName - Original filename
- * @returns {string} - File path relative to uploads directory
+ * @param {string} subdirectory - Subfolder inside /uploads (default handbooks)
+ * @returns {string} - File path relative to project root (e.g., uploads/handbooks/file.pdf)
  */
-export const savePDFToFile = (base64Data, fileName) => {
+export const savePDFToFile = (base64Data, fileName, subdirectory = 'handbooks') => {
   try {
     // Remove data URL prefix if present (data:application/pdf;base64,...)
     let base64Content = base64Data;
@@ -27,16 +39,17 @@ export const savePDFToFile = (base64Data, fileName) => {
 
     // Generate unique filename
     const timestamp = Date.now();
-    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const sanitizedFileName = (fileName || 'document.pdf').replace(/[^a-zA-Z0-9.-]/g, '_');
     const uniqueFileName = `${timestamp}_${sanitizedFileName}`;
-    const filePath = path.join(uploadsDir, uniqueFileName);
+    const targetDir = resolveSubdirectory(subdirectory);
+    const filePath = path.join(targetDir, uniqueFileName);
 
     // Convert base64 to buffer and write to file
     const buffer = Buffer.from(base64Content, 'base64');
     fs.writeFileSync(filePath, buffer);
 
     // Return relative path for storage in database
-    return `uploads/handbooks/${uniqueFileName}`;
+    return `uploads/${subdirectory}/${uniqueFileName}`;
   } catch (error) {
     console.error('Error saving PDF to file:', error);
     throw new Error('Failed to save PDF file');
@@ -80,5 +93,5 @@ export const deletePDFFile = (filePath) => {
 /**
  * Get the absolute path to uploads directory
  */
-export const getUploadsDir = () => uploadsDir;
+export const getUploadsDir = (subdirectory = 'handbooks') => resolveSubdirectory(subdirectory);
 

@@ -17,6 +17,14 @@ import {
   getDriveConnectionStatus
 } from '../controllers/presidentController.js';
 import { getActivityLogs } from '../controllers/adminController.js';
+import {
+  getPresidentPolicyDepartments,
+  createPolicyDepartment,
+  updatePolicyDepartment,
+  createPolicySection,
+  updatePolicySection,
+  deletePolicySection
+} from '../controllers/policyController.js';
 
 const router = express.Router();
 
@@ -55,5 +63,13 @@ router.put('/memorandums/:id', updateMemorandum);
 
 // Activity logs routes
 router.get('/activity-logs', getActivityLogs);
+
+// Policy management routes
+router.get('/policies/departments', getPresidentPolicyDepartments);
+router.post('/policies/departments', createPolicyDepartment);
+router.put('/policies/departments/:id', updatePolicyDepartment);
+router.post('/policies/sections', createPolicySection);
+router.put('/policies/sections/:id', updatePolicySection);
+router.delete('/policies/sections/:id', deletePolicySection);
 
 export default router;

@@ -9,6 +9,7 @@ import ResetPassword from './pages/ResetPassword'
 import SetupAccount from './pages/SetupAccount'
 import Memorandum from './pages/Memorandum'
 import StudentHandbook from './pages/StudentHandbook'
+import Policy from './pages/Policy'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminHandbook from './pages/AdminHandbook'
 import AdminMemorandum from './pages/AdminMemorandum'
@@ -22,9 +23,11 @@ import PresidentMemorandum from './pages/PresidentMemorandum'
 import PresidentHandbook from './pages/PresidentHandbook'
 import PresidentNotifications from './pages/PresidentNotifications'
 import PresidentActivityLogs from './pages/PresidentActivityLogs'
+import PresidentPolicy from './pages/PresidentPolicy'
 import BuksuCalendar from './pages/BuksuCalendar'
 import PresidentCalendar from './pages/PresidentCalendar'
 import Search from './pages/Search'
+import AdminPolicy from './pages/AdminPolicy'
 import { subscribeOnMessage } from './firebase'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -88,8 +91,10 @@ function App() {
           <Route path="/setup-account" element={<SetupAccount />} />
           <Route path="/memorandum" element={<Memorandum />} />
           <Route path="/student-handbook" element={<StudentHandbook />} />
+          <Route path="/policy" element={<Policy />} />
           <Route path="/admin-dashboard" element={<AdminDashboard />} />
           <Route path="/admin-handbook" element={<AdminHandbook />} />
+          <Route path="/admin-policy" element={<AdminPolicy />} />
           <Route path="/admin-memorandum" element={<AdminMemorandum />} />
           <Route path="/manage-users" element={<ManageUsers />} />
           <Route path="/activity-logs" element={<ActivityLogs />} />
@@ -97,6 +102,7 @@ function App() {
           <Route path="/president-dashboard" element={<PresidentDashboard />} />
           <Route path="/president-memorandum" element={<PresidentMemorandum />} />
           <Route path="/president-handbook" element={<PresidentHandbook />} />
+          <Route path="/president-policy" element={<PresidentPolicy />} />
           <Route path="/president-notifications" element={<PresidentNotifications />} />
           <Route path="/president-activity-logs" element={<PresidentActivityLogs />} />
           <Route path="/buksu-calendar" element={<BuksuCalendar />} />
