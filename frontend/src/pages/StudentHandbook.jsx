@@ -926,11 +926,6 @@ const StudentHandbook = () => {
                         </button>
                       </div>
                     </div>
-                    {renderError && (
-                      <div className='bg-red-50 text-red-700 border border-red-100 mx-4 mt-4 mb-2 rounded-lg px-4 py-2 text-sm'>
-                        {renderError}
-                      </div>
-                    )}
                     <div
                       ref={canvasContainerRef}
                       className='bg-gray-50 flex justify-center overflow-auto p-4 min-h-[400px] w-full max-w-full'
