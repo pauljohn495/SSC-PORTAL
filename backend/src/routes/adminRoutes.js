@@ -35,6 +35,7 @@ router.delete('/memorandums/:id/permanent', adminController.permanentlyDeleteMem
 // Activity logs
 router.get('/activity-logs', adminController.getActivityLogs);
 router.get('/archived', adminController.getArchivedItems);
+router.post('/backups', adminController.createManualBackup);
 
 // Policy review
 router.get('/policies/sections', getPolicySectionsForReview);

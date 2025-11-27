@@ -1,8 +1,13 @@
+import fs from 'fs';
+import path from 'path';
+import archiver from 'archiver';
+import { fileURLToPath } from 'url';
 import User from '../models/User.js';
 import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
 import HandbookSection from '../models/HandbookSection.js';
+import Notification from '../models/Notification.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
@@ -11,6 +16,9 @@ import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 import { deletePDFFile } from '../utils/fileStorage.js';
 import { deleteFileFromDrive } from '../utils/googleDrive.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper function to send email notification to president
 const notifyPresident = async (subject, content) => {
@@ -1391,6 +1399,80 @@ export const getArchivedItems = async (req, res, next) => {
     const response = { handbooks, memorandums, users };
     logAndSetHeader(req, res, 'GET', '/api/admin/archived', 200, response);
     res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createManualBackup = async (req, res, next) => {
+  try {
+    const { adminId } = req.body || {};
+
+    if (!adminId) {
+      const response = { message: 'Admin ID is required' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/backups', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      const response = { message: 'Only admins can generate backups' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/backups', 403, response);
+      return res.status(403).json(response);
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveName = `ipt-collab-backup-${timestamp}.zip`;
+    logAndSetHeader(req, res, 'POST', '/api/admin/backups', 200, { message: 'Generating backup archive', archiveName });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${archiveName}"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => {
+      console.error('Backup archive error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Failed to generate backup archive' });
+      } else {
+        res.end();
+      }
+    });
+
+    archive.pipe(res);
+
+    const metadata = {
+      generatedAt: new Date().toISOString(),
+      generatedBy: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email
+      },
+      includes: ['users', 'handbooks', 'handbookSections', 'memorandums', 'notifications', 'activityLogs']
+    };
+    archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
+
+    const collections = [
+      { filename: 'users.json', data: await User.find().lean() },
+      { filename: 'handbooks.json', data: await Handbook.find().lean() },
+      { filename: 'handbookSections.json', data: await HandbookSection.find().lean() },
+      { filename: 'memorandums.json', data: await Memorandum.find().lean() },
+      { filename: 'notifications.json', data: await Notification.find().lean() },
+      { filename: 'activityLogs.json', data: await ActivityLog.find().lean() }
+    ];
+
+    collections.forEach(({ filename, data }) => {
+      archive.append(JSON.stringify(data, null, 2), { name: `database/${filename}` });
+    });
+
+    await archive.finalize();
+
+    await logActivity(
+      adminId,
+      'manual_backup',
+      `Manual backup generated (${archiveName})`,
+      { archiveName, collections: collections.length },
+      req
+    );
   } catch (error) {
     next(error);
   }

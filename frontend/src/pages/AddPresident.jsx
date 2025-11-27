@@ -58,6 +58,7 @@ const AddPresident = () => {
           <li><Link to="/admin-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
           <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
           <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Manage User</Link></li>
+          <li><Link to="/admin-backup" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Backup</Link></li>
           <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>

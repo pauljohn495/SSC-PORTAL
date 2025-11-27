@@ -28,6 +28,7 @@ import BuksuCalendar from './pages/BuksuCalendar'
 import PresidentCalendar from './pages/PresidentCalendar'
 import Search from './pages/Search'
 import AdminPolicy from './pages/AdminPolicy'
+import AdminBackup from './pages/AdminBackup'
 import { subscribeOnMessage } from './firebase'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -96,6 +97,7 @@ function App() {
           <Route path="/admin-handbook" element={<AdminHandbook />} />
           <Route path="/admin-policy" element={<AdminPolicy />} />
           <Route path="/admin-memorandum" element={<AdminMemorandum />} />
+          <Route path="/admin-backup" element={<AdminBackup />} />
           <Route path="/manage-users" element={<ManageUsers />} />
           <Route path="/activity-logs" element={<ActivityLogs />} />
           <Route path="/archived" element={<Archived />} />
