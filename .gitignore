@@ -7,3 +7,5 @@ frontend/.env:2
 node_modules/
 backend/node_modules/
 frontend/node_modules/
+backend/.env:1
+backend/.env:2
