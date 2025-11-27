@@ -93,6 +93,68 @@ export const getPublicHandbookSections = async (req, res, next) => {
   }
 };
 
+export const searchHandbookSections = async (req, res, next) => {
+  try {
+    const { query } = req.query;
+    const searchTerm = typeof query === 'string' ? query.trim() : '';
+
+    if (!searchTerm) {
+      return res.status(400).json({ message: 'Search query is required' });
+    }
+
+    const normalized = searchTerm.toLowerCase();
+    const sections = await HandbookSection.find({
+      published: true,
+      status: 'approved',
+      archived: { $ne: true },
+      pdfContent: { $exists: true, $ne: '' }
+    }).select('title description pdfContent order');
+
+    const SNIPPET_RADIUS = 120;
+    const MAX_SNIPPETS_PER_SECTION = 3;
+    const results = [];
+
+    sections.forEach((section) => {
+      const content = section.pdfContent || '';
+      const lowerContent = content.toLowerCase();
+      let matchIndex = lowerContent.indexOf(normalized);
+      const snippets = [];
+      let safetyCounter = 0;
+
+      while (matchIndex !== -1 && snippets.length < MAX_SNIPPETS_PER_SECTION && safetyCounter < 50) {
+        const start = Math.max(0, matchIndex - SNIPPET_RADIUS);
+        const end = Math.min(content.length, matchIndex + normalized.length + SNIPPET_RADIUS);
+        const rawSnippet = content.slice(start, end).replace(/\s+/g, ' ').trim();
+
+        snippets.push({
+          text: rawSnippet,
+          matchIndex
+        });
+
+        matchIndex = lowerContent.indexOf(normalized, matchIndex + normalized.length);
+        safetyCounter += 1;
+      }
+
+      if (snippets.length) {
+        results.push({
+          sectionId: section._id,
+          title: section.title,
+          description: section.description,
+          order: section.order,
+          snippets
+        });
+      }
+    });
+
+    res.json({
+      query: searchTerm,
+      results
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Send a test push notification to a user by userId
 export const sendTestPush = async (req, res, next) => {
   try {

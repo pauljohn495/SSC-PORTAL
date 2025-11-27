@@ -22,6 +22,9 @@ const StudentHandbook = () => {
   const [pdfSearchLoading, setPdfSearchLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState([])
+  const [sectionSearchResults, setSectionSearchResults] = useState([])
+  const [sectionSearchLoading, setSectionSearchLoading] = useState(false)
+  const [sectionSearchError, setSectionSearchError] = useState('')
   const [currentMatchIndex, setCurrentMatchIndex] = useState(-1)
   const [isSearching, setIsSearching] = useState(false)
   const [viewerPage, setViewerPage] = useState(1)
@@ -172,6 +175,8 @@ const StudentHandbook = () => {
     if (!searchResults.length || !viewerPage) return []
     return searchResults.filter((match) => match.pageIndex === viewerPage - 1)
   }, [searchResults, viewerPage])
+
+  const hasSearchTerm = Boolean(searchTerm.trim())
 
   // Fetch PDF ArrayBuffer for search (viewer streams directly from API)
   useEffect(() => {
@@ -469,6 +474,8 @@ const StudentHandbook = () => {
     setSearchTerm('')
     setSearchResults([])
     setCurrentMatchIndex(-1)
+    setSectionSearchResults([])
+    setSectionSearchError('')
   }, [])
 
   const goToMatch = useCallback((direction) => {
@@ -511,7 +518,6 @@ const StudentHandbook = () => {
     textLayerCacheRef.current = new Map()
     setSearchResults([])
     setCurrentMatchIndex(-1)
-    setSearchTerm('')
       setViewerPage(1)
   }, [activeDocument?.id])
 
@@ -533,6 +539,61 @@ const StudentHandbook = () => {
       return clamped
     })
   }, [pdfDoc])
+  useEffect(() => {
+    if (!pdfDoc) return
+    if (!searchTerm.trim()) return
+    performSearch()
+  }, [pdfDoc, performSearch, searchTerm])
+
+  useEffect(() => {
+    const query = searchTerm.trim()
+    if (!query) {
+      setSectionSearchResults([])
+      setSectionSearchError('')
+      setSectionSearchLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
+    let cancelled = false
+    const timeoutId = setTimeout(async () => {
+      try {
+        setSectionSearchLoading(true)
+        setSectionSearchError('')
+        const response = await fetch(
+          `${API_BASE_URL}/handbook-sections/search?query=${encodeURIComponent(query)}`,
+          { signal: controller.signal }
+        )
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.message || 'Failed to search sections')
+        }
+        const data = await response.json()
+        if (cancelled) {
+          return
+        }
+        const results = Array.isArray(data.results) ? data.results : []
+        setSectionSearchResults(results)
+      } catch (error) {
+        if (cancelled || error.name === 'AbortError') {
+          return
+        }
+        console.error('Error searching other sections:', error)
+        setSectionSearchResults([])
+        setSectionSearchError(error.message || 'Failed to search other sections.')
+      } finally {
+        if (!cancelled) {
+          setSectionSearchLoading(false)
+        }
+      }
+    }, 400)
+
+    return () => {
+      cancelled = true
+      controller.abort()
+      clearTimeout(timeoutId)
+    }
+  }, [searchTerm])
 
   useEffect(() => {
     const element = canvasContainerRef.current
@@ -868,6 +929,71 @@ const StudentHandbook = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {hasSearchTerm && (
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4 space-y-3'>
+                    <div className='flex flex-wrap items-start justify-between gap-2'>
+                      <div>
+                        <p className='text-sm font-semibold text-blue-950'>Matches in other sections</p>
+                        <p className='text-xs text-gray-500'>Click a result to open that section.</p>
+                      </div>
+                      <div className='text-xs text-gray-500'>
+                        {sectionSearchLoading
+                          ? 'Searching…'
+                          : `${sectionSearchResults.length} section${
+                              sectionSearchResults.length === 1 ? '' : 's'
+                            }`}
+                      </div>
+                    </div>
+                    {sectionSearchError && (
+                      <div className='text-xs text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2'>
+                        {sectionSearchError}
+                      </div>
+                    )}
+                    {!sectionSearchError &&
+                      (sectionSearchResults.length > 0 ? (
+                        <div className='max-h-60 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-100'>
+                          {sectionSearchResults.map((result) => (
+                            <button
+                              type='button'
+                              key={result.sectionId}
+                              onClick={() => handleSelectDocument(`section-${result.sectionId}`)}
+                              className='w-full text-left px-3 py-3 hover:bg-blue-50 transition'
+                            >
+                              <div className='flex items-center justify-between text-sm font-semibold text-gray-800'>
+                                <span>{result.title}</span>
+                                <span className='text-xs text-gray-500'>
+                                  {(result.snippets?.length || 0).toString()} match
+                                  {result.snippets?.length === 1 ? '' : 'es'}
+                                </span>
+                              </div>
+                              {result.description && (
+                                <p className='text-xs text-gray-500 mt-1 line-clamp-1'>
+                                  {result.description}
+                                </p>
+                              )}
+                              <div className='mt-2 space-y-1'>
+                                {(result.snippets || []).slice(0, 3).map((snippet, index) => (
+                                  <p
+                                    key={`${result.sectionId}-${index}`}
+                                    className='text-xs text-gray-600 line-clamp-2'
+                                  >
+                                    …{snippet.text}…
+                                  </p>
+                                ))}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        !sectionSearchLoading && (
+                          <p className='text-sm text-gray-500'>
+                            No matches found in other sections yet.
+                          </p>
+                        )
+                      ))}
                   </div>
                 )}
 
