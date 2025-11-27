@@ -5,6 +5,7 @@ import NotificationDropdown from '../components/NotificationDropdown'
 import Swal from 'sweetalert2'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
 const DRIVE_PREVIEW_BASE = 'https://drive.google.com/file/d'
@@ -16,6 +17,7 @@ const StudentHandbook = () => {
   const [handbookPages, setHandbookPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [handbookError, setHandbookError] = useState('')
   const [pdfArrayBuffer, setPdfArrayBuffer] = useState(null)
   const [pdfDoc, setPdfDoc] = useState(null)
@@ -355,7 +357,7 @@ const StudentHandbook = () => {
     navigate('/login')
   }
 
-  const downloadActiveDocument = () => {
+  const downloadActiveDocument = useCallback(async () => {
     if (!activeDocument) return
     const fileUrl = activeDocument.fileUrl
 
@@ -369,14 +371,69 @@ const StudentHandbook = () => {
       return
     }
 
+    try {
+      setDownloadingPdf(true)
+      const response = await fetch(fileUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to download PDF: ${response.status} ${response.statusText}`)
+      }
+
+      const arrayBuffer = await response.arrayBuffer()
+      const pdfDocInstance = await PDFDocument.load(arrayBuffer)
+      const font = await pdfDocInstance.embedFont(StandardFonts.Helvetica)
+      const pages = pdfDocInstance.getPages()
+      const downloadDate = new Date().toLocaleString()
+      const leftText = `Downloaded: ${downloadDate}`
+      const rightText = 'Bukidnon State University | Supreme Student Council'
+      const fontSize = 7
+      const margin = 36
+
+      pages.forEach((page) => {
+        const { width } = page.getSize()
+        const rightTextWidth = font.widthOfTextAtSize(rightText, fontSize)
+        const rightX = Math.max(margin, width - rightTextWidth - margin)
+        const y = margin - 12
+
+        page.drawText(leftText, {
+          x: margin,
+          y,
+          size: fontSize,
+          font,
+          color: rgb(0.2, 0.2, 0.2)
+        })
+
+        page.drawText(rightText, {
+          x: rightX,
+          y,
+          size: fontSize,
+          font,
+          color: rgb(0.2, 0.2, 0.2)
+        })
+      })
+
+      const processedBytes = await pdfDocInstance.save()
+      const blob = new Blob([processedBytes], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
-    link.href = fileUrl
-    link.download = activeDocument.fileName || `${activeDocument.title || 'Document'}.pdf`
+      link.href = url
+      link.download = activeDocument.fileName || `${activeDocument.title || 'Document'}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
       setDownloadMenuOpen(false)
-  }
+    } catch (error) {
+      console.error('Download error:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'Download Failed',
+        text: error.message || 'Unable to download the document right now.',
+        confirmButtonColor: '#dc2626'
+      })
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }, [activeDocument])
 
   const performSearch = useCallback(async () => {
     if (!pdfDoc) {
@@ -770,9 +827,12 @@ const StudentHandbook = () => {
                   <div className='absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg z-50 border border-gray-200'>
                     <button
                       onClick={downloadActiveDocument}
-                      className='block w-full text-left px-4 py-3 hover:bg-gray-100 transition rounded-lg text-black'
+                      disabled={downloadingPdf}
+                      className={`block w-full text-left px-4 py-3 rounded-lg text-black transition ${
+                        downloadingPdf ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'hover:bg-gray-100'
+                      }`}
                     >
-                      Download PDF
+                      {downloadingPdf ? 'Preparing download…' : 'Download PDF'}
                     </button>
                   </div>
                 )}
