@@ -5,6 +5,7 @@ const handbookSectionSchema = new mongoose.Schema({
   slug: { type: String, required: true, unique: true },
   description: { type: String, trim: true },
   order: { type: Number, default: 0 },
+  fileName: { type: String },
   fileUrl: { type: String },
   googleDriveFileId: { type: String },
   googleDrivePreviewUrl: { type: String },
@@ -18,6 +19,8 @@ const handbookSectionSchema = new mongoose.Schema({
   version: { type: Number, default: 1 },
   archived: { type: Boolean, default: false },
   archivedAt: { type: Date },
+  priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  priorityEditStartedAt: { type: Date },
 }, { timestamps: true });
 
 const HandbookSection = mongoose.model('HandbookSection', handbookSectionSchema);

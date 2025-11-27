@@ -19,8 +19,6 @@ const PresidentNotifications = () => {
   const [deletingId, setDeletingId] = useState(null);
   const [targetScope, setTargetScope] = useState('all');
   const [selectedDepartments, setSelectedDepartments] = useState([]);
-  const [rangeStart, setRangeStart] = useState('');
-  const [rangeEnd, setRangeEnd] = useState('');
   const [departments, setDepartments] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
 
@@ -29,8 +27,6 @@ const PresidentNotifications = () => {
     setMessage('');
     setTargetScope('all');
     setSelectedDepartments([]);
-    setRangeStart('');
-    setRangeEnd('');
   };
   const toggleDepartmentSelection = (departmentName) => {
     setSelectedDepartments((prev) => {
@@ -47,9 +43,6 @@ const PresidentNotifications = () => {
     }
     if (notification.targetDepartments && notification.targetDepartments.length > 0) {
       return notification.targetDepartments.join(', ');
-    }
-    if (notification.targetScope === 'range' && notification.rangeStart && notification.rangeEnd) {
-      return `${notification.rangeStart} → ${notification.rangeEnd}`;
     }
     return 'Selected departments';
   };
@@ -112,12 +105,6 @@ const PresidentNotifications = () => {
        return;
      }
 
-     if (targetScope === 'range' && (!rangeStart || !rangeEnd)) {
-       setMessageAlert('Select both a starting and ending department for the range.');
-       setMessageType('error');
-       return;
-     }
-
     try {
       setSubmitting(true);
       
@@ -130,11 +117,6 @@ const PresidentNotifications = () => {
 
       if (targetScope === 'departments') {
         payload.departments = selectedDepartments;
-      }
-
-      if (targetScope === 'range') {
-        payload.rangeStart = rangeStart;
-        payload.rangeEnd = rangeEnd;
       }
 
       const data = await presidentAPI.createNotification(payload);
@@ -421,14 +403,11 @@ const PresidentNotifications = () => {
                   onChange={(e) => {
                     setTargetScope(e.target.value);
                     setSelectedDepartments([]);
-                    setRangeStart('');
-                    setRangeEnd('');
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
                 >
                   <option value="all">All departments</option>
                   <option value="departments">Specific departments</option>
-                  <option value="range">Range of departments</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
                   Choose who should receive this notification.
@@ -457,51 +436,6 @@ const PresidentNotifications = () => {
                   )}
                   <p className="text-xs text-gray-500 mt-1">
                     {selectedDepartments.length} department{selectedDepartments.length === 1 ? '' : 's'} selected.
-                  </p>
-                </div>
-              )}
-
-              {targetScope === 'range' && (
-                <div className="mb-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">Select department range</p>
-                  {departmentsLoading ? (
-                    <p className="text-sm text-gray-500">Loading departments...</p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">From</label>
-                        <select
-                          value={rangeStart}
-                          onChange={(e) => setRangeStart(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                        >
-                          <option value="">Select department</option>
-                          {departments.map((dept) => (
-                            <option key={`start-${dept}`} value={dept}>
-                              {dept}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">To</label>
-                        <select
-                          value={rangeEnd}
-                          onChange={(e) => setRangeEnd(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
-                        >
-                          <option value="">Select department</option>
-                          {departments.map((dept) => (
-                            <option key={`end-${dept}`} value={dept}>
-                              {dept}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    Students whose departments fall within this range will receive the notification.
                   </p>
                 </div>
               )}

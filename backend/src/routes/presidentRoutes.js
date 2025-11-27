@@ -8,6 +8,8 @@ import {
   getHandbookSections,
   createHandbookSection,
   updateHandbookSection,
+  setHandbookSectionPriority,
+  clearHandbookSectionPriority,
   getNotifications,
   createNotification,
   publishNotification,
@@ -56,6 +58,8 @@ router.post('/handbook/:id/clear-priority', clearHandbookPriority);
 router.get('/handbook-sections', getHandbookSections);
 router.post('/handbook-sections', createHandbookSection);
 router.put('/handbook-sections/:id', updateHandbookSection);
+router.post('/handbook-sections/:id/priority', setHandbookSectionPriority);
+router.post('/handbook-sections/:id/clear-priority', clearHandbookSectionPriority);
 
 // Notifications routes
 router.get('/notifications', getNotifications);

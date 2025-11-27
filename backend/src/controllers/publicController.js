@@ -67,7 +67,7 @@ export const getPublicNotifications = async (req, res, next) => {
       baseFilter.$or = [
         { targetScope: 'all' },
         {
-          targetScope: { $in: ['departments', 'range'] },
+          targetScope: 'departments',
           targetDepartments: trimmedDepartment
         }
       ];

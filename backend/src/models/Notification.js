@@ -9,15 +9,13 @@ const notificationSchema = new mongoose.Schema({
   emailSent: { type: Boolean, default: false },
   targetScope: {
     type: String,
-    enum: ['all', 'departments', 'range'],
+    enum: ['all', 'departments'],
     default: 'all'
   },
   targetDepartments: {
     type: [String],
     default: []
-  },
-  rangeStart: { type: String },
-  rangeEnd: { type: String }
+  }
 }, { timestamps: true });
 
 const Notification = mongoose.model('Notification', notificationSchema);

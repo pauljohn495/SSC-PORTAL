@@ -181,10 +181,23 @@ const PresidentMemorandum = () => {
         priorityData = {};
       }
 
-      // If the request itself failed, show an error and do not open the modal.
+      // Always open the modal
+      setEditingMemorandum(memorandum);
+      setEditTitle(memorandum.title);
+      setEditYear(memorandum.year.toString());
+      setEditFile(null);
+      setEditVersion(memorandum.version || 1);
+      setShowModal(true);
+      setTitle('');
+      setYear('');
+      setFile(null);
+      setMessage('');
+      setMessageType('');
+
+      // If the request itself failed, user can still view but cannot save
       if (!priorityResponse.ok) {
         setHasPriority(false);
-        setPriorityError(priorityData.message || 'Failed to get edit priority. Please try again.');
+        setPriorityError(priorityData.message || 'Someone else is currently editing this memorandum. You can view but cannot save changes.');
         return;
       }
 
@@ -192,7 +205,7 @@ const PresidentMemorandum = () => {
       // treat it as "no priority" to avoid two users editing at once.
       if (typeof priorityData.hasPriority !== 'boolean') {
         setHasPriority(false);
-        setPriorityError('Unable to determine edit priority. Please refresh and try again.');
+        setPriorityError('Unable to determine edit priority. You can view but cannot save changes.');
         return;
       }
 
@@ -200,25 +213,22 @@ const PresidentMemorandum = () => {
         // User has priority
         setHasPriority(true);
         setPriorityError('');
-        setEditingMemorandum(memorandum);
-        setEditTitle(memorandum.title);
-        setEditYear(memorandum.year.toString());
-        setEditFile(null);
-        setEditVersion(memorandum.version || 1);
-        setShowModal(true);
-        setTitle('');
-        setYear('');
-        setFile(null);
-        setMessage('');
-        setMessageType('');
       } else {
-        // Another user already has edit priority - do NOT open the editor.
+        // Another user already has edit priority - user can view but cannot save
         setHasPriority(false);
-        setPriorityError('Someone is editing this right now. Please try again later.');
+        setPriorityError('Someone else is currently editing this memorandum. You can view but cannot save changes.');
       }
     } catch (error) {
       console.error('Error getting edit priority:', error);
-      setPriorityError('Failed to get edit priority. Please try again.');
+      // Still open the modal but without save ability
+      setEditingMemorandum(memorandum);
+      setEditTitle(memorandum.title);
+      setEditYear(memorandum.year.toString());
+      setEditFile(null);
+      setEditVersion(memorandum.version || 1);
+      setShowModal(true);
+      setHasPriority(false);
+      setPriorityError('Failed to get edit priority. You can view but cannot save changes.');
     }
   };
 
@@ -426,11 +436,6 @@ const PresidentMemorandum = () => {
                 </div>
               </div>
 
-              {!showModal && priorityError && !hasPriority && (
-                <div className='mb-4 p-4 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
-                  {priorityError}
-                </div>
-              )}
 
               {/* Memorandum List */}
               <div className='bg-white rounded-lg shadow-md mb-8'>
@@ -509,14 +514,14 @@ const PresidentMemorandum = () => {
               {editingMemorandum ? 'Edit Memorandum' : 'Create Memorandum'}
             </h2>
 
-            {priorityError && (
-              <div className={`mb-6 p-4 rounded-lg ${hasPriority ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'}`}>
-                {priorityError}
+            {editingMemorandum && !hasPriority && (
+              <div className='mb-6 p-4 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
+                ⚠️ {priorityError || 'Someone else is currently editing this memorandum. You can view but cannot save changes.'}
               </div>
             )}
 
-            {hasPriority && (
-              <div className='mb-6 p-4 bg-green-50 text-green-800 rounded-lg'>
+            {editingMemorandum && hasPriority && (
+              <div className='mb-6 p-4 bg-green-50 text-green-800 rounded-lg border border-green-200'>
                 ✅ You have edit priority - your changes will be saved
               </div>
             )}

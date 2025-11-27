@@ -503,19 +503,6 @@ const StudentHandbook = () => {
     setRenderScale(1)
   }, [])
 
-  // Show loading or nothing while checking auth
-  if (authLoading) {
-    return (
-      <div className='bg-white min-h-screen flex items-center justify-center'>
-        <p className='text-gray-500'>Loading...</p>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return null
-  }
-
   useEffect(() => {
     if (!activeDocument?.id) {
       setViewerPage(1)
@@ -636,6 +623,18 @@ const StudentHandbook = () => {
       cancelCurrentRender().catch(() => {})
     }
   }, [pdfDoc, viewerPage, renderScale, containerWidth])
+
+  if (authLoading) {
+    return (
+      <div className='bg-white min-h-screen flex items-center justify-center'>
+        <p className='text-gray-500'>Loading...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
 
   return (
     <div className='bg-white min-h-screen'>

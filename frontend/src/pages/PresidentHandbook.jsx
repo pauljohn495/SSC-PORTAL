@@ -38,6 +38,8 @@ const PresidentHandbook = () => {
   const [sectionMessageType, setSectionMessageType] = useState('');
   const [editingSection, setEditingSection] = useState(null);
   const [editingSectionVersion, setEditingSectionVersion] = useState(1);
+  const [sectionHasPriority, setSectionHasPriority] = useState(false);
+  const [sectionPriorityError, setSectionPriorityError] = useState('');
 
   const isAuthorized = !!user && user.role === 'president';
 
@@ -183,21 +185,74 @@ const PresidentHandbook = () => {
     setSectionFile(file || null);
   };
 
-  const openSectionModal = (section = null) => {
-    if (!section && !driveConnected) {
-      setSectionMessage('Please connect your Google Drive account before creating sections.');
-      setSectionMessageType('error');
-      return;
-    }
+  const openSectionModal = async (section = null) => {
     if (section) {
-      setEditingSection(section);
-      setSectionForm({
-        title: section.title || '',
-        description: section.description || '',
-        order: section.order ?? 0,
-        published: section.published ?? true,
-      });
-      setEditingSectionVersion(section.version || 1);
+      // Try to get edit priority
+      try {
+        const priorityResponse = await fetch(`/api/president/handbook-sections/${section._id}/priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+
+        let priorityData = {};
+        try {
+          priorityData = await priorityResponse.json();
+        } catch {
+          priorityData = {};
+        }
+
+        // Always open the modal
+        setEditingSection(section);
+        setSectionForm({
+          title: section.title || '',
+          description: section.description || '',
+          order: section.order ?? 0,
+          published: section.published ?? true,
+        });
+        setEditingSectionVersion(section.version || 1);
+        setSectionFile(null);
+        setSectionMessage('');
+        setSectionMessageType('');
+        setSectionModalOpen(true);
+
+        if (!priorityResponse.ok) {
+          setSectionHasPriority(false);
+          setSectionPriorityError(priorityData.message || 'Someone else is currently editing this section. You can view but cannot save changes.');
+          return;
+        }
+
+        if (typeof priorityData.hasPriority !== 'boolean') {
+          setSectionHasPriority(false);
+          setSectionPriorityError('Unable to determine edit priority. You can view but cannot save changes.');
+          return;
+        }
+
+        if (priorityData.hasPriority) {
+          setSectionHasPriority(true);
+          setSectionPriorityError('');
+        } else {
+          setSectionHasPriority(false);
+          setSectionPriorityError('Someone else is currently editing this section. You can view but cannot save changes.');
+        }
+      } catch (error) {
+        console.error('Error getting edit priority:', error);
+        // Still open the modal but without save ability
+        setEditingSection(section);
+        setSectionForm({
+          title: section.title || '',
+          description: section.description || '',
+          order: section.order ?? 0,
+          published: section.published ?? true,
+        });
+        setEditingSectionVersion(section.version || 1);
+        setSectionFile(null);
+        setSectionMessage('');
+        setSectionMessageType('');
+        setSectionModalOpen(true);
+        setSectionHasPriority(false);
+        setSectionPriorityError('Failed to get edit priority. You can view but cannot save changes.');
+      }
     } else {
       setEditingSection(null);
       setEditingSectionVersion(1);
@@ -207,19 +262,36 @@ const PresidentHandbook = () => {
         order: sidebarSections.length,
         published: true,
       });
+      setSectionFile(null);
+      setSectionMessage('');
+      setSectionMessageType('');
+      setSectionHasPriority(true); // New sections always have priority
+      setSectionPriorityError('');
+      setSectionModalOpen(true);
     }
-    setSectionFile(null);
-    setSectionMessage('');
-    setSectionMessageType('');
-    setSectionModalOpen(true);
   };
 
-  const closeSectionModal = () => {
+  const closeSectionModal = async () => {
+    // Clear priority if we have it
+    if (sectionHasPriority && editingSection) {
+      try {
+        await fetch(`/api/president/handbook-sections/${editingSection._id}/clear-priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+      } catch (error) {
+        console.error('Error clearing section priority:', error);
+      }
+    }
+
     setSectionModalOpen(false);
     setSectionFile(null);
     setSectionMessage('');
     setSectionMessageType('');
     setEditingSection(null);
+    setSectionHasPriority(false);
+    setSectionPriorityError('');
     setSectionForm({
       title: '',
       description: '',
@@ -238,11 +310,6 @@ const PresidentHandbook = () => {
     }
     if (!editingSection && !sectionFile) {
       setSectionMessage('Please upload a PDF file for this section.');
-      setSectionMessageType('error');
-      return;
-    }
-    if ((!editingSection || sectionFile) && !driveConnected) {
-      setSectionMessage('Connect Google Drive to upload section PDFs.');
       setSectionMessageType('error');
       return;
     }
@@ -630,12 +697,8 @@ const PresidentHandbook = () => {
               </button>
               <button
                 onClick={() => openSectionModal(null)}
-                disabled={!driveConnected}
-                className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-                  driveConnected
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                    : 'bg-gray-400 cursor-not-allowed text-white'
-                }`}
+                className='px-6 py-2 rounded-lg font-semibold transition-colors bg-blue-600 hover:bg-blue-700 text-white'
+                title={!driveConnected ? 'Files will use local storage until Google Drive is connected.' : undefined}
               >
                 Add Section
               </button>
@@ -660,7 +723,7 @@ const PresidentHandbook = () => {
                     Google Drive Not Connected
                   </p>
                   <p className='text-sm text-yellow-700 mt-1'>
-                    You need to connect your Google Drive account to upload handbooks. Click "Connect Google Drive" above to get started.
+                    Connecting your Google Drive lets files upload straight to your Drive. Without it, uploads fall back to on-server storage and remain available, but we recommend connecting when possible.
                   </p>
                 </div>
               </div>
@@ -745,10 +808,8 @@ const PresidentHandbook = () => {
                 )}
                 <button
                   onClick={() => openSectionModal(null)}
-                  disabled={!driveConnected}
-                  className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-                    driveConnected ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-400 text-white cursor-not-allowed'
-                  }`}
+                  className='px-4 py-2 rounded-lg font-semibold transition-colors bg-blue-600 hover:bg-blue-700 text-white'
+                  title={!driveConnected ? 'Files will use local storage until Google Drive is connected.' : undefined}
                 >
                   Add Section
                 </button>
@@ -916,6 +977,16 @@ const PresidentHandbook = () => {
             <h2 className='text-2xl font-bold mb-6 text-blue-950'>
               {editingSection ? 'Edit Sidebar Section' : 'Add Sidebar Section'}
             </h2>
+            {editingSection && !sectionHasPriority && (
+              <div className='mb-4 p-3 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
+                ⚠️ {sectionPriorityError || 'Someone else is currently editing this section. You can view but cannot save changes.'}
+              </div>
+            )}
+            {editingSection && sectionHasPriority && (
+              <div className='mb-4 p-3 rounded-lg bg-green-50 text-green-800 border border-green-200'>
+                ✅ You have edit priority - your changes will be saved
+              </div>
+            )}
             {sectionMessageType === 'error' && sectionMessage && (
               <div className='mb-4 p-3 rounded-lg bg-red-50 text-red-800'>
                 {sectionMessage}
@@ -993,10 +1064,16 @@ const PresidentHandbook = () => {
                 </button>
                 <button
                   type='submit'
-                  disabled={sectionSubmitting}
-                  className='px-6 py-2 rounded-lg font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                  disabled={sectionSubmitting || (editingSection && !sectionHasPriority)}
+                  className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
+                    sectionSubmitting || (editingSection && !sectionHasPriority)
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
                 >
-                  {sectionSubmitting ? 'Saving...' : editingSection ? 'Update Section' : 'Create Section'}
+                  {sectionSubmitting ? 'Saving...' : 
+                   editingSection && !sectionHasPriority ? 'No Save Priority' :
+                   editingSection ? 'Update Section' : 'Create Section'}
                 </button>
               </div>
             </form>

@@ -865,10 +865,8 @@ export const createHandbookSection = async (req, res, next) => {
     }
     const pdfBuffer = Buffer.from(base64Content, 'base64');
 
-    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-    const driveFolderId = config.google.driveSectionsFolderId || config.google.driveFolderId || null;
+    const { extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
     const sanitizedFileName = (fileName || `${slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
     const pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
 
     const section = new HandbookSection({
@@ -877,9 +875,10 @@ export const createHandbookSection = async (req, res, next) => {
       order: parseOrderValue(order, 0),
       published: false,
       slug,
-      fileUrl: driveResult.webContentLink || driveResult.previewUrl,
-      googleDriveFileId: driveResult.fileId,
-      googleDrivePreviewUrl: driveResult.previewUrl,
+      fileUrl,
+      fileName: sanitizedFileName,
+      googleDriveFileId: undefined,
+      googleDrivePreviewUrl: undefined,
       pdfContent,
       createdBy: userId,
       status: 'pending'
@@ -956,27 +955,18 @@ export const updateHandbookSection = async (req, res, next) => {
       section.order = parseOrderValue(order, section.order);
     }
     if (fileUrl) {
-      const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-      const { deletePDFFile } = await import('../utils/fileStorage.js');
-
-      if (section.googleDriveFileId) {
-        await deleteFileFromDrive(section.googleDriveFileId, userId);
-      } else if (section.fileUrl && !section.fileUrl.startsWith('http')) {
-        deletePDFFile(section.fileUrl);
-      }
-
+      const { extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
       let base64Data = fileUrl;
       if (fileUrl.includes(',')) {
         base64Data = fileUrl.split(',')[1];
       }
       const pdfBuffer = Buffer.from(base64Data, 'base64');
       const sanitizedFileName = (fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-      const driveFolderId = config.google.driveSectionsFolderId || config.google.driveFolderId || null;
-      const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
 
-      section.fileUrl = driveResult.webContentLink || driveResult.previewUrl;
-      section.googleDriveFileId = driveResult.fileId;
-      section.googleDrivePreviewUrl = driveResult.previewUrl;
+      section.fileUrl = fileUrl;
+      section.fileName = sanitizedFileName;
+      section.googleDriveFileId = undefined;
+      section.googleDrivePreviewUrl = undefined;
       section.pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
     }
 
@@ -996,6 +986,111 @@ export const updateHandbookSection = async (req, res, next) => {
     const response = { message: 'Section updated successfully', section };
     logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 200, response);
     res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const setHandbookSectionPriority = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      const response = { message: 'Only presidents can set edit priority', hasPriority: false };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found', hasPriority: false };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (!section.priorityEditor) {
+      section.priorityEditor = userId;
+      section.priorityEditStartedAt = new Date();
+      await section.save();
+      
+      const response = { 
+        message: 'You have edit priority', 
+        section,
+        hasPriority: true
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 200, response);
+      return res.status(200).json(response);
+    }
+
+    if (section.priorityEditor.toString() === userId) {
+      const response = { 
+        message: 'You already have edit priority', 
+        section,
+        hasPriority: true
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 200, response);
+      return res.status(200).json(response);
+    }
+
+    // Check if priority has expired (30 minutes)
+    const priorityAge = Date.now() - new Date(section.priorityEditStartedAt).getTime();
+    const PRIORITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+    if (priorityAge > PRIORITY_TIMEOUT) {
+      section.priorityEditor = userId;
+      section.priorityEditStartedAt = new Date();
+      await section.save();
+      
+      const response = { 
+        message: 'Previous edit priority expired. You now have edit priority.', 
+        section,
+        hasPriority: true
+      };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 200, response);
+      return res.status(200).json(response);
+    }
+
+    const response = { 
+      message: 'Someone else is currently editing this section', 
+      hasPriority: false
+    };
+    logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/priority`, 200, response);
+    res.status(200).json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const clearHandbookSectionPriority = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'president') {
+      const response = { message: 'Only presidents can clear edit priority' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/clear-priority`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/clear-priority`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (section.priorityEditor && section.priorityEditor.toString() === userId) {
+      section.priorityEditor = null;
+      section.priorityEditStartedAt = null;
+      await section.save();
+    }
+
+    const response = { message: 'Priority cleared' };
+    logAndSetHeader(req, res, 'POST', `/api/president/handbook-sections/${id}/clear-priority`, 200, response);
+    res.status(200).json(response);
   } catch (error) {
     next(error);
   }
@@ -1025,7 +1120,6 @@ export const getUserActivityLogs = async (req, res, next) => {
 };
 
 const DEPARTMENT_LIST = getDepartments();
-
 const slugify = (text = '') =>
   text
     .toString()
@@ -1053,25 +1147,13 @@ const parseOrderValue = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const normalizeDepartmentTargets = ({ targetScope, departments = [], rangeStart, rangeEnd }) => {
+const normalizeDepartmentTargets = ({ targetScope, departments = [] }) => {
   if (targetScope === 'departments') {
     const cleaned = departments
       .map((dept) => (typeof dept === 'string' ? dept.trim() : ''))
       .filter(Boolean)
       .filter((dept) => DEPARTMENT_LIST.includes(dept));
     return Array.from(new Set(cleaned));
-  }
-  if (targetScope === 'range') {
-    if (!rangeStart || !rangeEnd) {
-      return [];
-    }
-    const startIdx = DEPARTMENT_LIST.indexOf(rangeStart);
-    const endIdx = DEPARTMENT_LIST.indexOf(rangeEnd);
-    if (startIdx === -1 || endIdx === -1) {
-      return [];
-    }
-    const [from, to] = startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
-    return DEPARTMENT_LIST.slice(from, to + 1);
   }
   return [];
 };
@@ -1084,9 +1166,7 @@ export const createNotification = async (req, res, next) => {
       message,
       userId,
       targetScope = 'all',
-      departments = [],
-      rangeStart,
-      rangeEnd
+      departments = []
     } = req.body;
 
     if (!userId) {
@@ -1115,7 +1195,7 @@ export const createNotification = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
-    if (!['all', 'departments', 'range'].includes(targetScope)) {
+    if (!['all', 'departments'].includes(targetScope)) {
       const response = { message: 'Invalid target scope' };
       logAndSetHeader(req, res, 'POST', '/api/president/notifications', 400, response);
       return res.status(400).json(response);
@@ -1123,9 +1203,7 @@ export const createNotification = async (req, res, next) => {
 
     const resolvedDepartments = normalizeDepartmentTargets({
       targetScope,
-      departments,
-      rangeStart,
-      rangeEnd
+      departments
     });
 
     if (targetScope !== 'all' && resolvedDepartments.length === 0) {
@@ -1139,9 +1217,7 @@ export const createNotification = async (req, res, next) => {
       message,
       createdBy: userId,
       targetScope,
-      targetDepartments: resolvedDepartments,
-      rangeStart: targetScope === 'range' ? rangeStart : undefined,
-      rangeEnd: targetScope === 'range' ? rangeEnd : undefined,
+      targetDepartments: resolvedDepartments
     });
     await notification.save();
 
