@@ -361,7 +361,7 @@ export const setMemorandumPriority = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    if (!memorandum.priorityEditor) {
+    if (!memorandum.priorityEditor || memorandum.priorityEditor.toString() === userId) {
       memorandum.priorityEditor = userId;
       memorandum.priorityEditStartedAt = new Date();
       await memorandum.save();

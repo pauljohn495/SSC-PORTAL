@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "algoliasearch": "^5.43.0",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
@@ -20,6 +21,7 @@
     "firebase-admin": "^13.5.0",
     "googleapis": "^164.1.0",
     "mongoose": "^8.19.1",
+    "multer": "^2.0.2",
     "nodemailer": "^7.0.10",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",

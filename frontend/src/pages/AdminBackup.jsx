@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,8 +11,9 @@ const AdminBackup = () => {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('');
   const [lastGeneratedAt, setLastGeneratedAt] = useState(null);
-
-  const isAuthorized = !!user && user.role === 'admin';
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
+  const fileInputRef = useRef(null);
 
   const handleLogout = () => {
     logout();
@@ -20,12 +21,6 @@ const AdminBackup = () => {
   };
 
   const triggerBackup = async () => {
-    if (!user?._id) {
-      setMessage('Missing admin ID.');
-      setMessageType('error');
-      return;
-    }
-
     setMessage('');
     setMessageType('');
     setDownloading(true);
@@ -34,7 +29,7 @@ const AdminBackup = () => {
       const response = await fetch(`${API_BASE_URL}/admin/backups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: user._id })
+        body: JSON.stringify({ adminId: user?._id })
       });
 
       if (!response.ok) {
@@ -77,9 +72,49 @@ const AdminBackup = () => {
     }
   };
 
-  if (!isAuthorized) {
-    return <div>Access Denied</div>;
-  }
+  const handleImportClick = () => {
+    if (importing) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleImportChange = async (event) => {
+    const backupFile = event.target.files?.[0];
+    if (!backupFile) return;
+
+    setMessage('');
+    setMessageType('');
+    setImportSummary(null);
+    setImporting(true);
+
+    const formData = new FormData();
+    formData.append('backup', backupFile);
+    if (user?._id) {
+      formData.append('adminId', user._id);
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/backups/import`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to import backup.');
+      }
+
+      setMessage(data.message || 'Backup imported successfully.');
+      setMessageType('success');
+      setImportSummary(data.summary || null);
+    } catch (error) {
+      console.error('Import error:', error);
+      setMessage(error.message || 'Failed to import backup.');
+      setMessageType('error');
+    } finally {
+      setImporting(false);
+      event.target.value = '';
+    }
+  };
 
   return (
     <div className='bg-white min-h-screen flex'>
@@ -112,10 +147,7 @@ const AdminBackup = () => {
       <main className="flex-1 bg-gray-100 p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           <div>
-            <h1 className='text-3xl font-bold text-blue-950'>Manual Backup</h1>
-            <p className='text-sm text-gray-600 mt-1'>
-              Generate an on-demand snapshot of the database and uploaded files. Store the downloaded zip in a secure location.
-            </p>
+            <h1 className='text-3xl font-bold text-blue-950'>Create Backup</h1>
           </div>
 
           {message && (
@@ -131,10 +163,6 @@ const AdminBackup = () => {
           <div className='bg-white rounded-lg shadow-md border border-gray-200 p-6 space-y-4'>
             <div className='flex flex-col gap-2'>
               <p className='text-lg font-semibold text-blue-950'>Generate Backup</p>
-              <p className='text-sm text-gray-600'>
-                The backup includes database collections (users, handbooks, sections, memorandums, notifications, activity logs) and
-                the latest uploaded PDF files.
-              </p>
               {lastGeneratedAt && (
                 <p className='text-xs text-gray-500'>Last generated: {lastGeneratedAt}</p>
               )}
@@ -147,6 +175,46 @@ const AdminBackup = () => {
             >
               {downloading ? 'Preparing backup...' : 'Download backup zip'}
             </button>
+            <p className='text-black text-sm font-bold'>
+                Click to Generate a backup
+              </p>
+          </div>
+
+          <div className='bg-white rounded-lg shadow-md border border-gray-200 p-6 space-y-4'>
+            <div className='flex flex-col gap-2'>
+              <p className='text-lg font-semibold text-blue-950'>Import Backup</p>
+            </div>
+            <input
+              type='file'
+              accept='.zip'
+              ref={fileInputRef}
+              onChange={handleImportChange}
+              className='hidden'
+            />
+            <button
+              type='button'
+              onClick={handleImportClick}
+              disabled={importing}
+              className='inline-flex items-center justify-center px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition disabled:bg-green-300 disabled:cursor-not-allowed'
+            >
+              {importing ? 'Importing backup...' : 'Import backup zip'}
+            </button>
+            <p className='text-black text-sm font-bold'>
+                Click to Import a backup
+              </p>
+            {importSummary && (
+              <div className='bg-gray-50 border border-gray-200 rounded-lg p-4'>
+                <p className='text-sm font-semibold text-gray-700 mb-2'>Collections imported</p>
+                <ul className='space-y-1 text-sm text-gray-600'>
+                  {Object.entries(importSummary).map(([key, detail]) => (
+                    <li key={key} className='flex justify-between'>
+                      <span className='capitalize'>{key}</span>
+                      <span>{detail?.inserted ?? 0} docs{detail?.status === 'missing_from_backup' ? ' (missing)' : ''}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       </main>

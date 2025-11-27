@@ -2,12 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import AdmZip from 'adm-zip';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Handbook from '../models/Handbook.js';
 import Memorandum from '../models/Memorandum.js';
 import ActivityLog from '../models/ActivityLog.js';
 import HandbookSection from '../models/HandbookSection.js';
 import Notification from '../models/Notification.js';
+import PolicyDepartment from '../models/PolicyDepartment.js';
+import PolicySection from '../models/PolicySection.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
@@ -19,6 +24,16 @@ import { deleteFileFromDrive } from '../utils/googleDrive.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const tempImportDir = path.join(__dirname, '../../tmp/imports');
+fs.mkdirSync(tempImportDir, { recursive: true });
+
+const backupUpload = multer({
+  dest: tempImportDir,
+  limits: { fileSize: 150 * 1024 * 1024 }
+});
+
+export const backupUploadMiddleware = backupUpload.single('backup');
 
 // Helper function to send email notification to president
 const notifyPresident = async (subject, content) => {
@@ -1408,18 +1423,15 @@ export const createManualBackup = async (req, res, next) => {
   try {
     const { adminId } = req.body || {};
 
-    if (!adminId) {
-      const response = { message: 'Admin ID is required' };
-      logAndSetHeader(req, res, 'POST', '/api/admin/backups', 400, response);
-      return res.status(400).json(response);
+    let initiator = null;
+    if (adminId) {
+      initiator = await User.findById(adminId);
     }
-
-    const admin = await User.findById(adminId);
-    if (!admin || admin.role !== 'admin') {
-      const response = { message: 'Only admins can generate backups' };
-      logAndSetHeader(req, res, 'POST', '/api/admin/backups', 403, response);
-      return res.status(403).json(response);
-    }
+    const adminMeta = initiator || {
+      _id: adminId || 'system_user',
+      name: initiator?.name || 'System User',
+      email: initiator?.email || config.email?.user || 'noreply@example.com'
+    };
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const archiveName = `ipt-collab-backup-${timestamp}.zip`;
@@ -1443,11 +1455,11 @@ export const createManualBackup = async (req, res, next) => {
     const metadata = {
       generatedAt: new Date().toISOString(),
       generatedBy: {
-        id: admin._id,
-        name: admin.name,
-        email: admin.email
+        id: adminMeta._id,
+        name: adminMeta.name,
+        email: adminMeta.email
       },
-      includes: ['users', 'handbooks', 'handbookSections', 'memorandums', 'notifications', 'activityLogs']
+      includes: ['users', 'handbooks', 'handbookSections', 'memorandums', 'notifications', 'activityLogs', 'policyDepartments', 'policySections']
     };
     archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
 
@@ -1457,7 +1469,9 @@ export const createManualBackup = async (req, res, next) => {
       { filename: 'handbookSections.json', data: await HandbookSection.find().lean() },
       { filename: 'memorandums.json', data: await Memorandum.find().lean() },
       { filename: 'notifications.json', data: await Notification.find().lean() },
-      { filename: 'activityLogs.json', data: await ActivityLog.find().lean() }
+      { filename: 'activityLogs.json', data: await ActivityLog.find().lean() },
+      { filename: 'policyDepartments.json', data: await PolicyDepartment.find().lean() },
+      { filename: 'policySections.json', data: await PolicySection.find().lean() }
     ];
 
     collections.forEach(({ filename, data }) => {
@@ -1467,7 +1481,7 @@ export const createManualBackup = async (req, res, next) => {
     await archive.finalize();
 
     await logActivity(
-      adminId,
+      adminId || 'system_user',
       'manual_backup',
       `Manual backup generated (${archiveName})`,
       { archiveName, collections: collections.length },
@@ -1475,6 +1489,128 @@ export const createManualBackup = async (req, res, next) => {
     );
   } catch (error) {
     next(error);
+  }
+};
+
+const backupCollections = [
+  { key: 'users', filename: 'database/users.json', model: User },
+  { key: 'handbooks', filename: 'database/handbooks.json', model: Handbook },
+  { key: 'handbookSections', filename: 'database/handbookSections.json', model: HandbookSection },
+  { key: 'memorandums', filename: 'database/memorandums.json', model: Memorandum },
+  { key: 'notifications', filename: 'database/notifications.json', model: Notification },
+  { key: 'activityLogs', filename: 'database/activityLogs.json', model: ActivityLog },
+  { key: 'policyDepartments', filename: 'database/policyDepartments.json', model: PolicyDepartment },
+  { key: 'policySections', filename: 'database/policySections.json', model: PolicySection }
+];
+
+const cleanupTempFile = async (filePath) => {
+  if (!filePath) return;
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn('Temp file cleanup failed:', err.message);
+    }
+  }
+};
+
+export const importBackup = async (req, res, next) => {
+  const tempFilePath = req.file?.path;
+  try {
+    const { adminId } = req.body || {};
+
+    if (!req.file) {
+      const response = { message: 'Backup file is required' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/backups/import', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const ext = path.extname(req.file.originalname || '').toLowerCase();
+    if (ext !== '.zip') {
+      await cleanupTempFile(tempFilePath);
+      const response = { message: 'Only .zip backup files are supported' };
+      logAndSetHeader(req, res, 'POST', '/api/admin/backups/import', 400, response);
+      return res.status(400).json(response);
+    }
+
+    const zip = new AdmZip(tempFilePath);
+
+    let metadata = null;
+    const metadataEntry = zip.getEntry('metadata.json');
+    if (metadataEntry) {
+      try {
+        metadata = JSON.parse(metadataEntry.getData().toString('utf-8'));
+      } catch (err) {
+        await cleanupTempFile(tempFilePath);
+        const response = { message: 'Invalid metadata.json in backup file' };
+        logAndSetHeader(req, res, 'POST', '/api/admin/backups/import', 400, response);
+        return res.status(400).json(response);
+      }
+    }
+
+    const summary = {};
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        for (const { key, filename, model } of backupCollections) {
+          const entry = zip.getEntry(filename);
+
+          if (!entry) {
+            summary[key] = { inserted: 0, status: 'missing_from_backup' };
+            continue;
+          }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(entry.getData().toString('utf-8'));
+          } catch (err) {
+            throw new Error(`Invalid JSON structure in ${filename}`);
+          }
+
+          if (!Array.isArray(parsed)) {
+            throw new Error(`Backup file ${filename} must contain an array`);
+          }
+
+          await model.deleteMany({}, { session });
+          if (parsed.length > 0) {
+            await model.insertMany(parsed, { session, ordered: false });
+          }
+
+          summary[key] = { inserted: parsed.length };
+        }
+      });
+    } finally {
+      session.endSession();
+    }
+
+    await cleanupTempFile(tempFilePath);
+
+    await logActivity(
+      adminId || 'system_user',
+      'manual_backup_import',
+      `Manual backup imported (${req.file.originalname})`,
+      {
+        archiveName: req.file.originalname,
+        summary
+      },
+      req
+    );
+
+    const response = {
+      message: 'Backup imported successfully. Data has been replaced with the uploaded snapshot.',
+      summary,
+      metadata
+    };
+    logAndSetHeader(req, res, 'POST', '/api/admin/backups/import', 200, response);
+    res.status(200).json(response);
+  } catch (error) {
+    await cleanupTempFile(tempFilePath);
+    console.error('Backup import failed:', error);
+    const status = /backup|metadata|json/i.test(error.message || '') ? 400 : 500;
+    const response = { message: error.message || 'Failed to import backup file' };
+    logAndSetHeader(req, res, 'POST', '/api/admin/backups/import', status, response);
+    res.status(status).json(response);
   }
 };
 
