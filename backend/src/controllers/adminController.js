@@ -946,7 +946,7 @@ const sectionStatusOrder = {
 
 export const getHandbookSectionsAdmin = async (req, res, next) => {
   try {
-    const sections = await HandbookSection.find()
+    const sections = await HandbookSection.find({ archived: { $ne: true } })
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
       .populate('approvedBy', 'name email')
@@ -1029,7 +1029,7 @@ export const deleteHandbookSectionAdmin = async (req, res, next) => {
 
     const admin = await User.findById(adminId);
     if (!admin || admin.role !== 'admin') {
-      const response = { message: 'Only admins can delete sections' };
+      const response = { message: 'Only admins can archive sections' };
       logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 403, response);
       return res.status(403).json(response);
     }
@@ -1041,6 +1041,94 @@ export const deleteHandbookSectionAdmin = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
+    section.archived = true;
+    section.archivedAt = new Date();
+    await section.save();
+
+    await logActivity(adminId, 'handbook_section_archive', `Section "${section.title}" archived`, {
+      sectionId: section._id,
+    }, req);
+
+    const response = { message: 'Section archived successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const restoreHandbookSectionAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body || {};
+
+    if (!adminId) {
+      const response = { message: 'Admin ID is required' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/restore`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      const response = { message: 'Only admins can restore sections' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/restore`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/restore`, 404, response);
+      return res.status(404).json(response);
+    }
+
+    if (!section.archived) {
+      const response = { message: 'Section is not archived' };
+      logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/restore`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    section.archived = false;
+    section.archivedAt = null;
+    await section.save();
+
+    await logActivity(adminId, 'handbook_section_restore', `Section "${section.title}" restored`, {
+      sectionId: section._id,
+    }, req);
+
+    const response = { message: 'Section restored successfully', section };
+    logAndSetHeader(req, res, 'PUT', `/api/admin/handbook-sections/${id}/restore`, 200, response);
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const permanentlyDeleteHandbookSectionAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body || {};
+
+    if (!adminId) {
+      const response = { message: 'Admin ID is required' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}/permanent`, 400, response);
+      return res.status(400).json(response);
+    }
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
+      const response = { message: 'Only admins can delete sections' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}/permanent`, 403, response);
+      return res.status(403).json(response);
+    }
+
+    const section = await HandbookSection.findById(id);
+    if (!section) {
+      const response = { message: 'Section not found' };
+      logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}/permanent`, 404, response);
+      return res.status(404).json(response);
+    }
+
     if (section.googleDriveFileId) {
       await deleteFileFromDrive(section.googleDriveFileId, adminId);
     } else if (section.fileUrl && !section.fileUrl.startsWith('http')) {
@@ -1049,13 +1137,25 @@ export const deleteHandbookSectionAdmin = async (req, res, next) => {
 
     await HandbookSection.findByIdAndDelete(id);
 
-    await logActivity(adminId, 'handbook_section_delete', `Section "${section.title}" deleted`, {
+    await logActivity(adminId, 'handbook_section_delete_permanent', `Section "${section.title}" permanently deleted`, {
       sectionId: section._id,
     }, req);
 
-    const response = { message: 'Section deleted successfully' };
-    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}`, 200, response);
+    const response = { message: 'Section deleted permanently' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/handbook-sections/${id}/permanent`, 200, response);
     res.json(response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getArchivedHandbookSections = async (req, res, next) => {
+  try {
+    const sections = await HandbookSection.find({ archived: true })
+      .populate('createdBy', 'name email')
+      .sort({ archivedAt: -1 });
+    logAndSetHeader(req, res, 'GET', '/api/admin/handbook-sections/archived', 200, sections);
+    res.json(sections);
   } catch (error) {
     next(error);
   }

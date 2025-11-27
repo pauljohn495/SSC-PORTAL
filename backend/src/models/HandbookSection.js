@@ -16,6 +16,8 @@ const handbookSectionSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   version: { type: Number, default: 1 },
+  archived: { type: Boolean, default: false },
+  archivedAt: { type: Date },
 }, { timestamps: true });
 
 const HandbookSection = mongoose.model('HandbookSection', handbookSectionSchema);

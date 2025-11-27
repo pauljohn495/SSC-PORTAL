@@ -39,13 +39,13 @@ const ProfileSetupModal = ({
       <div className="modal-box max-w-3xl bg-blue-900">
         <h3 className="font-bold text-2xl text-white mb-4">Complete Your Profile</h3>
         <p className="text-white mb-6">
-          Select your department and course so we can tailor announcements and updates for you.
+          Select your College and course so we can tailor announcements and updates for you.
         </p>
 
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label className="block text-sm font-semibold text-white mb-2">
-              Department
+              College
             </label>
             <select
               className="select select-bordered w-full text-white"
@@ -56,7 +56,7 @@ const ProfileSetupModal = ({
               }}
               required
             >
-              <option value="" disabled>Select your department</option>
+              <option value="" disabled>Select your College</option>
               {colleges.map((college) => (
                 <option key={college.name} value={college.name}>
                   {college.name}
@@ -77,7 +77,7 @@ const ProfileSetupModal = ({
               required
             >
               <option value="" disabled>
-                {selectedDepartment ? 'Select your course' : 'Select a department first'}
+                {selectedDepartment ? 'Select your course' : 'Select a college first'}
               </option>
               {courseOptions.map((course) => (
                 <option key={course} value={course}>

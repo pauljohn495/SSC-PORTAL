@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import Swal from 'sweetalert2'
 
 const statusFilters = [
   { value: 'pending', label: 'Pending' },
@@ -83,8 +84,17 @@ const AdminPolicy = () => {
     }
   }
 
-  const deleteSection = async (sectionId) => {
-    if (!window.confirm('Are you sure you want to permanently delete this policy section?')) {
+  const archiveSection = async (sectionId) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Archive Policy Section',
+      text: 'Are you sure you want to archive this policy section?',
+      showCancelButton: true,
+      confirmButtonColor: '#3b82f6',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, archive it'
+    })
+    if (!result.isConfirmed) {
       return
     }
     try {
@@ -96,12 +106,24 @@ const AdminPolicy = () => {
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to delete section')
+        throw new Error(data.message || 'Failed to archive section')
       }
+      Swal.fire({
+        icon: 'success',
+        title: 'Archived',
+        text: 'Policy section has been archived.',
+        timer: 1500,
+        showConfirmButton: false
+      })
       fetchSections(status)
     } catch (err) {
-      console.error('Error deleting section:', err)
-      setError(err.message || 'Failed to delete section')
+      console.error('Error archiving section:', err)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: err.message || 'Failed to archive section'
+      })
+      setError(err.message || 'Failed to archive section')
     } finally {
       setActionLoadingId(null)
     }
@@ -173,7 +195,7 @@ const AdminPolicy = () => {
             <div className='bg-white rounded-lg shadow overflow-hidden'>
               <div className='grid grid-cols-12 gap-4 px-4 py-3 border-b text-sm font-semibold text-gray-600'>
                 <span className='col-span-3'>Section</span>
-                <span className='col-span-3'>Department</span>
+                <span className='col-span-3'>College</span>
                 <span className='col-span-2'>Submitted By</span>
                 <span className='col-span-2'>Submitted</span>
                 <span className='col-span-2 text-right'>Actions</span>
@@ -225,11 +247,11 @@ const AdminPolicy = () => {
                       </span>
                     )}
                     <button
-                      onClick={() => deleteSection(section._id)}
+                      onClick={() => archiveSection(section._id)}
                       disabled={actionLoadingId === section._id}
                       className='px-3 py-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-semibold disabled:opacity-50'
                     >
-                      Delete
+                      Archive
                     </button>
                   </div>
                 </div>

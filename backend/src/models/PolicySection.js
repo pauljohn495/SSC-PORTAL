@@ -14,7 +14,9 @@ const policySectionSchema = new mongoose.Schema({
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedAt: { type: Date },
-  publishedAt: { type: Date }
+  publishedAt: { type: Date },
+  archived: { type: Boolean, default: false },
+  archivedAt: { type: Date }
 }, { timestamps: true });
 
 policySectionSchema.index({ department: 1, slug: 1 }, { unique: true });

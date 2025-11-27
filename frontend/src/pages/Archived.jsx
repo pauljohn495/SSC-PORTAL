@@ -23,7 +23,9 @@ const Archived = () => {
   const [archivedData, setArchivedData] = useState({
     handbooks: [],
     memorandums: [],
-    users: []
+    users: [],
+    policySections: [],
+    handbookSections: []
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -41,11 +43,17 @@ const Archived = () => {
     try {
       setLoading(true)
       setError('')
-      const data = await adminAPI.getArchivedItems()
+      const [data, policySections, handbookSections] = await Promise.all([
+        adminAPI.getArchivedItems(),
+        adminAPI.getArchivedPolicySections(),
+        adminAPI.getArchivedHandbookSections()
+      ])
       setArchivedData({
         handbooks: data.handbooks || [],
         memorandums: data.memorandums || [],
-        users: data.users || []
+        users: data.users || [],
+        policySections: policySections || [],
+        handbookSections: handbookSections || []
       })
     } catch (err) {
       console.error('Error fetching archived data:', err)
@@ -129,6 +137,70 @@ const Archived = () => {
     runAction(`user-delete-${id}`, () => adminAPI.deleteUser(id))
   }
 
+  const handleRestorePolicySection = async (id) => {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Restore Policy Section',
+      text: 'Are you sure you want to restore this policy section?',
+      showCancelButton: true,
+      confirmButtonColor: '#16a34a',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, restore it'
+    });
+    if (!result.isConfirmed) {
+      return;
+    }
+    runAction(`policy-restore-${id}`, () => adminAPI.restorePolicySection(id, user._id))
+  }
+
+  const handleDeletePolicySection = async (id) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete Policy Section',
+      text: 'Permanently delete this policy section? This cannot be undone.',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
+    }
+    runAction(`policy-delete-${id}`, () => adminAPI.deletePolicySectionPermanent(id, user._id))
+  }
+
+  const handleRestoreHandbookSection = async (id) => {
+    const result = await Swal.fire({
+      icon: 'question',
+      title: 'Restore Handbook Section',
+      text: 'Are you sure you want to restore this handbook section?',
+      showCancelButton: true,
+      confirmButtonColor: '#16a34a',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, restore it'
+    });
+    if (!result.isConfirmed) {
+      return;
+    }
+    runAction(`hbsection-restore-${id}`, () => adminAPI.restoreHandbookSection(id, user._id))
+  }
+
+  const handleDeleteHandbookSection = async (id) => {
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Permanently Delete Handbook Section',
+      text: 'Permanently delete this handbook section? This cannot be undone.',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete it'
+    });
+    if (!result.isConfirmed) {
+      return;
+    }
+    runAction(`hbsection-delete-${id}`, () => adminAPI.deleteHandbookSectionPermanent(id, user._id))
+  }
+
   const handleLogout = () => {
     logout()
     navigate('/login')
@@ -170,7 +242,7 @@ const Archived = () => {
           <div className='flex items-center justify-between mb-8'>
             <div>
               <h1 className='text-3xl font-bold text-blue-950'>Archived Records</h1>
-              <p className='text-sm text-gray-600 mt-2'>Review previously archived student handbooks, memorandums, and users.</p>
+              <p className='text-sm text-gray-600 mt-2'>Review previously archived handbook sections, memorandums, users, and policy sections.</p>
             </div>
             <button
               onClick={fetchArchived}
@@ -190,35 +262,35 @@ const Archived = () => {
           {loading ? (
             <div className='text-center py-12 text-gray-500'>Loading archived data...</div>
           ) : (
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
               <section className='bg-white rounded-lg shadow-md p-6 flex flex-col'>
                 <header>
-                  <h2 className='text-xl font-semibold text-blue-950'>Archived Student Handbooks</h2>
-                  <p className='text-sm text-gray-500'>Total: {archivedData.handbooks.length}</p>
+                  <h2 className='text-xl font-semibold text-blue-950'>Archived Handbook Sections</h2>
+                  <p className='text-sm text-gray-500'>Total: {archivedData.handbookSections.length}</p>
                 </header>
                 <div className='mt-4 space-y-4 overflow-y-auto max-h-[70vh] pr-1'>
-                  {archivedData.handbooks.length === 0 && <EmptyState message="No archived handbooks yet." />}
-                  {archivedData.handbooks.map((handbook) => {
-                    const restoreKey = `handbook-restore-${handbook._id}`
-                    const deleteKey = `handbook-delete-${handbook._id}`
+                  {archivedData.handbookSections.length === 0 && <EmptyState message="No archived handbook sections yet." />}
+                  {archivedData.handbookSections.map((section) => {
+                    const restoreKey = `hbsection-restore-${section._id}`
+                    const deleteKey = `hbsection-delete-${section._id}`
                     return (
-                    <div key={handbook._id} className='border border-gray-200 rounded-lg p-4'>
-                      <h3 className='font-semibold text-gray-800 truncate'>{handbook.fileName || 'Untitled Handbook'}</h3>
-                      <p className='text-sm text-gray-500 mt-1'>Status: <span className='font-medium text-gray-800 capitalize'>{handbook.status}</span></p>
-                      <p className='text-sm text-gray-500'>Archived: <span className='font-medium text-gray-800'>{formatDateTime(handbook.archivedAt)}</span></p>
-                      {handbook.createdBy && (
-                        <p className='text-xs text-gray-400 mt-2'>Uploaded by {handbook.createdBy.name || handbook.createdBy.email}</p>
+                    <div key={section._id} className='border border-gray-200 rounded-lg p-4'>
+                      <h3 className='font-semibold text-gray-800 truncate'>{section.title}</h3>
+                      <p className='text-sm text-gray-500 mt-1'>Status: <span className='font-medium text-gray-800 capitalize'>{section.status}</span></p>
+                      <p className='text-sm text-gray-500'>Archived: <span className='font-medium text-gray-800'>{formatDateTime(section.archivedAt)}</span></p>
+                      {section.createdBy && (
+                        <p className='text-xs text-gray-400 mt-2'>Created by {section.createdBy.name || section.createdBy.email}</p>
                       )}
                       <div className='flex items-center gap-2 mt-4'>
                         <button
-                          onClick={() => handleRestoreHandbook(handbook._id)}
+                          onClick={() => handleRestoreHandbookSection(section._id)}
                           disabled={processingKey === restoreKey}
                           className={`flex-1 px-3 py-2 rounded text-sm font-semibold transition-colors ${processingKey === restoreKey ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                         >
                           {processingKey === restoreKey ? 'Restoring...' : 'Restore'}
                         </button>
                         <button
-                          onClick={() => handleDeleteHandbook(handbook._id)}
+                          onClick={() => handleDeleteHandbookSection(section._id)}
                           disabled={processingKey === deleteKey}
                           className={`flex-1 px-3 py-2 rounded text-sm font-semibold transition-colors ${processingKey === deleteKey ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
                         >
@@ -293,6 +365,46 @@ const Archived = () => {
                         </button>
                         <button
                           onClick={() => handleDeleteUser(archivedUser._id)}
+                          disabled={processingKey === deleteKey}
+                          className={`flex-1 px-3 py-2 rounded text-sm font-semibold transition-colors ${processingKey === deleteKey ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                        >
+                          {processingKey === deleteKey ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+              </section>
+
+              <section className='bg-white rounded-lg shadow-md p-6 flex flex-col'>
+                <header>
+                  <h2 className='text-xl font-semibold text-blue-950'>Archived Policy Sections</h2>
+                  <p className='text-sm text-gray-500'>Total: {archivedData.policySections.length}</p>
+                </header>
+                <div className='mt-4 space-y-4 overflow-y-auto max-h-[70vh] pr-1'>
+                  {archivedData.policySections.length === 0 && <EmptyState message="No archived policy sections yet." />}
+                  {archivedData.policySections.map((section) => {
+                    const restoreKey = `policy-restore-${section._id}`
+                    const deleteKey = `policy-delete-${section._id}`
+                    return (
+                    <div key={section._id} className='border border-gray-200 rounded-lg p-4'>
+                      <h3 className='font-semibold text-gray-800 truncate'>{section.title}</h3>
+                      <p className='text-sm text-gray-500 mt-1'>Department: <span className='font-medium text-gray-800'>{section.department?.name || 'Unknown'}</span></p>
+                      <p className='text-sm text-gray-500'>Status: <span className='font-medium text-gray-800 capitalize'>{section.status}</span></p>
+                      <p className='text-sm text-gray-500'>Archived: <span className='font-medium text-gray-800'>{formatDateTime(section.archivedAt)}</span></p>
+                      {section.createdBy && (
+                        <p className='text-xs text-gray-400 mt-2'>Created by {section.createdBy.name || section.createdBy.email}</p>
+                      )}
+                      <div className='flex items-center gap-2 mt-4'>
+                        <button
+                          onClick={() => handleRestorePolicySection(section._id)}
+                          disabled={processingKey === restoreKey}
+                          className={`flex-1 px-3 py-2 rounded text-sm font-semibold transition-colors ${processingKey === restoreKey ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                        >
+                          {processingKey === restoreKey ? 'Restoring...' : 'Restore'}
+                        </button>
+                        <button
+                          onClick={() => handleDeletePolicySection(section._id)}
                           disabled={processingKey === deleteKey}
                           className={`flex-1 px-3 py-2 rounded text-sm font-semibold transition-colors ${processingKey === deleteKey ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
                         >

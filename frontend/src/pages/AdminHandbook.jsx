@@ -66,16 +66,16 @@ const AdminHandbook = () => {
     }
   };
 
-  const handleDeleteSection = async (section) => {
+  const handleArchiveSection = async (section) => {
     if (!user?._id) return;
     const result = await Swal.fire({
       icon: 'warning',
-      title: 'Delete Section',
-      text: `Are you sure you want to delete "${section.title}"?`,
+      title: 'Archive Section',
+      text: `Are you sure you want to archive "${section.title}"?`,
       showCancelButton: true,
-      confirmButtonColor: '#dc2626',
+      confirmButtonColor: '#3b82f6',
       cancelButtonColor: '#6b7280',
-      confirmButtonText: 'Yes, delete it'
+      confirmButtonText: 'Yes, archive it'
     });
     if (!result.isConfirmed) return;
 
@@ -95,11 +95,23 @@ const AdminHandbook = () => {
       }
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to delete section');
+        throw new Error(data.message || 'Failed to archive section');
       }
+      Swal.fire({
+        icon: 'success',
+        title: 'Archived',
+        text: 'Section has been archived.',
+        timer: 1500,
+        showConfirmButton: false
+      });
       fetchSectionDrafts();
     } catch (error) {
-      console.error('Error deleting section:', error);
+      console.error('Error archiving section:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to archive section'
+      });
     } finally {
       setSectionActionId(null);
     }
@@ -223,11 +235,11 @@ const AdminHandbook = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => handleDeleteSection(section)}
+                          onClick={() => handleArchiveSection(section)}
                           disabled={sectionActionId === section._id}
-                          className='px-4 py-2 text-sm font-semibold text-red-600 hover:text-red-800 transition disabled:opacity-50 disabled:cursor-not-allowed'
+                          className='px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed'
                         >
-                          {sectionActionId === section._id ? 'Deleting...' : 'Delete'}
+                          {sectionActionId === section._id ? 'Archiving...' : 'Archive'}
                         </button>
                       </div>
                     </div>

@@ -114,6 +114,24 @@ export const adminAPI = {
   }),
   getActivityLogs: () => apiRequest('/admin/activity-logs'),
   getArchivedItems: () => apiRequest('/admin/archived'),
+  getArchivedPolicySections: () => apiRequest('/admin/policies/sections/archived'),
+  getArchivedHandbookSections: () => apiRequest('/admin/handbook-sections/archived'),
+  restoreHandbookSection: (id, adminId) => apiRequest(`/admin/handbook-sections/${id}/restore`, {
+    method: 'PUT',
+    body: { adminId },
+  }),
+  deleteHandbookSectionPermanent: (id, adminId) => apiRequest(`/admin/handbook-sections/${id}/permanent`, {
+    method: 'DELETE',
+    body: { adminId },
+  }),
+  restorePolicySection: (id, adminId) => apiRequest(`/admin/policies/sections/${id}/restore`, {
+    method: 'PUT',
+    body: { adminId },
+  }),
+  deletePolicySectionPermanent: (id, adminId) => apiRequest(`/admin/policies/sections/${id}/permanent`, {
+    method: 'DELETE',
+    body: { adminId },
+  }),
 };
 
 const buildQueryString = (params = {}) => {

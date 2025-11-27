@@ -135,7 +135,7 @@ const Policy = () => {
         <div className='max-w-6xl mx-auto'>
           <div className='flex justify-between items-center mb-6'>
             <div className='flex-1'></div>
-            <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>DEPARTMENT POLICIES</h1>
+            <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>COLLEGE POLICIES</h1>
             <div className='flex-1'></div>
           </div>
 
@@ -145,14 +145,14 @@ const Policy = () => {
             <div className='text-center text-red-600 bg-red-50 border border-red-200 rounded-lg p-4'>{error}</div>
           ) : departments.length === 0 ? (
             <div className='text-center py-12 text-gray-500'>
-              Your department has no published policies yet.
+              Your College has no published policies yet.
             </div>
           ) : (
             <div className='flex flex-col lg:flex-row gap-6'>
               <aside className='w-full lg:w-64 space-y-4'>
                 <div className='bg-white border border-gray-200 rounded-lg shadow-sm p-4'>
                   <div className='flex items-center justify-between mb-3'>
-                    <h2 className='text-base font-semibold text-blue-950'>Departments</h2>
+                    <h2 className='text-base font-semibold text-blue-950'>Colleges</h2>
                   </div>
                   <div className='space-y-3 max-h-[70vh] overflow-y-auto'>
                     {departments.map((dept) => {

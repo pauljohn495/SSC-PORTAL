@@ -217,16 +217,76 @@ export const deletePolicySectionAdmin = async (req, res, next) => {
       return res.status(404).json({ message: 'Section not found' });
     }
 
+    section.archived = true;
+    section.archivedAt = new Date();
+    await section.save();
+
+    await logActivity(admin._id, 'policy_section_archive', `Admin archived policy section "${section.title}"`, {
+      sectionId: section._id,
+    }, req);
+
+    res.json({ message: 'Section archived' });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    next(error);
+  }
+};
+
+export const restorePolicySectionAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body;
+    const admin = await ensureUserRole(adminId, ['admin']);
+
+    const section = await PolicySection.findById(id);
+    if (!section) {
+      return res.status(404).json({ message: 'Section not found' });
+    }
+
+    if (!section.archived) {
+      return res.status(400).json({ message: 'Section is not archived' });
+    }
+
+    section.archived = false;
+    section.archivedAt = null;
+    await section.save();
+
+    await logActivity(admin._id, 'policy_section_restore', `Admin restored policy section "${section.title}"`, {
+      sectionId: section._id,
+    }, req);
+
+    res.json({ message: 'Section restored', section });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    next(error);
+  }
+};
+
+export const permanentlyDeletePolicySectionAdmin = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { adminId } = req.body;
+    const admin = await ensureUserRole(adminId, ['admin']);
+
+    const section = await PolicySection.findById(id);
+    if (!section) {
+      return res.status(404).json({ message: 'Section not found' });
+    }
+
     if (section.filePath) {
       deletePDFFile(section.filePath);
     }
     await section.deleteOne();
 
-    await logActivity(admin._id, 'policy_section_delete_admin', `Admin deleted policy section "${section.title}"`, {
+    await logActivity(admin._id, 'policy_section_delete_permanent', `Admin permanently deleted policy section "${section.title}"`, {
       sectionId: section._id,
     }, req);
 
-    res.json({ message: 'Section deleted' });
+    res.json({ message: 'Section deleted permanently' });
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ message: error.message });
@@ -354,10 +414,22 @@ export const getPolicySectionsForReview = async (req, res, next) => {
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status filter' });
     }
-    const sections = await PolicySection.find({ status })
+    const sections = await PolicySection.find({ status, archived: { $ne: true } })
       .populate('department', 'name accessKey')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
+    res.json(sections);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getArchivedPolicySections = async (req, res, next) => {
+  try {
+    const sections = await PolicySection.find({ archived: true })
+      .populate('department', 'name accessKey')
+      .populate('createdBy', 'name email')
+      .sort({ archivedAt: -1 });
     res.json(sections);
   } catch (error) {
     next(error);

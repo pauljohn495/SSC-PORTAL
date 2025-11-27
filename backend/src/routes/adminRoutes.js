@@ -1,6 +1,6 @@
 import express from 'express';
 import * as adminController from '../controllers/adminController.js';
-import { getPolicySectionsForReview, reviewPolicySection, deletePolicySectionAdmin } from '../controllers/policyController.js';
+import { getPolicySectionsForReview, reviewPolicySection, deletePolicySectionAdmin, restorePolicySectionAdmin, permanentlyDeletePolicySectionAdmin, getArchivedPolicySections } from '../controllers/policyController.js';
 
 const router = express.Router();
 
@@ -21,6 +21,9 @@ router.delete('/handbook/:id/permanent', adminController.permanentlyDeleteHandbo
 router.get('/handbook-sections', adminController.getHandbookSectionsAdmin);
 router.put('/handbook-sections/:id/status', adminController.updateHandbookSectionStatus);
 router.delete('/handbook-sections/:id', adminController.deleteHandbookSectionAdmin);
+router.put('/handbook-sections/:id/restore', adminController.restoreHandbookSectionAdmin);
+router.delete('/handbook-sections/:id/permanent', adminController.permanentlyDeleteHandbookSectionAdmin);
+router.get('/handbook-sections/archived', adminController.getArchivedHandbookSections);
 
 // Memorandum management
 router.get('/memorandums', adminController.getMemorandums);
@@ -37,6 +40,9 @@ router.get('/archived', adminController.getArchivedItems);
 router.get('/policies/sections', getPolicySectionsForReview);
 router.put('/policies/sections/:sectionId/status', reviewPolicySection);
 router.delete('/policies/sections/:id', deletePolicySectionAdmin);
+router.put('/policies/sections/:id/restore', restorePolicySectionAdmin);
+router.delete('/policies/sections/:id/permanent', permanentlyDeletePolicySectionAdmin);
+router.get('/policies/sections/archived', getArchivedPolicySections);
 
 export default router;
 

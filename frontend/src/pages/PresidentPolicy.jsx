@@ -10,9 +10,6 @@ const PresidentPolicy = () => {
   const [loading, setLoading] = useState(true)
   const [deptModalOpen, setDeptModalOpen] = useState(false)
   const [deptForm, setDeptForm] = useState({ name: '', description: '' })
-  const [renameModalOpen, setRenameModalOpen] = useState(false)
-  const [renameDept, setRenameDept] = useState(null)
-  const [renameForm, setRenameForm] = useState({ name: '', description: '', version: 1 })
   const [sectionModalOpen, setSectionModalOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState({ departmentId: '', title: '', description: '' })
   const [sectionFile, setSectionFile] = useState(null)
@@ -142,52 +139,6 @@ const PresidentPolicy = () => {
     }
   }
 
-  const handleRenameDepartment = (department) => {
-    setRenameDept(department)
-    setRenameForm({
-      name: department.name || '',
-      description: department.description || '',
-      version: department.version || 1
-    })
-    setRenameModalOpen(true)
-    setMessage('')
-    setMessageType('')
-  }
-
-  const submitRenameDepartment = async (event) => {
-    event.preventDefault()
-    if (!renameDept || !renameForm.name.trim()) {
-      setMessage('Department name is required')
-      setMessageType('error')
-      return
-    }
-    try {
-      const response = await fetch(`/api/president/policies/departments/${renameDept._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user._id,
-          name: renameForm.name.trim(),
-          description: renameForm.description,
-          version: renameForm.version
-        })
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to rename department')
-      }
-      setRenameModalOpen(false)
-      setRenameDept(null)
-      setRenameForm({ name: '', description: '' })
-      fetchDepartments()
-      setMessage('Department updated')
-      setMessageType('success')
-    } catch (error) {
-      setMessage(error.message || 'Failed to rename department')
-      setMessageType('error')
-    }
-  }
-
   const filteredDepartments = useMemo(() => {
     if (statusFilter === 'all') {
       return departments
@@ -234,14 +185,14 @@ const PresidentPolicy = () => {
           <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-3'>
             <div>
               <h1 className='text-3xl font-bold text-blue-950'>Policy Management</h1>
-              <p className='text-gray-600'>Organize departments and course-specific policies.</p>
+              <p className='text-gray-600'>Organize Colleges and course-specific policies.</p>
             </div>
             <div className='flex flex-wrap gap-2'>
               <button
                 onClick={() => setDeptModalOpen(true)}
                 className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold'
               >
-                Create Department
+                Create College
               </button>
               <button
                 onClick={() => setSectionModalOpen(true)}
@@ -273,9 +224,9 @@ const PresidentPolicy = () => {
           </div>
 
           {loading ? (
-            <div className='text-center text-gray-500 py-12'>Loading departments...</div>
+            <div className='text-center text-gray-500 py-12'>Loading College...</div>
           ) : filteredDepartments.length === 0 ? (
-            <div className='text-center text-gray-500 py-12 bg-white rounded-lg shadow'>No departments yet.</div>
+            <div className='text-center text-gray-500 py-12 bg-white rounded-lg shadow'>No College yet.</div>
           ) : (
             <div className='space-y-6'>
               {filteredDepartments.map((department) => (
@@ -286,14 +237,6 @@ const PresidentPolicy = () => {
                       {department.description && (
                         <p className='text-sm text-gray-600 mt-1'>{department.description}</p>
                       )}
-                    </div>
-                    <div className='flex items-center gap-2'>
-                      <button
-                        className='text-sm text-blue-600 hover:text-blue-800'
-                        onClick={() => handleRenameDepartment(department)}
-                      >
-                        Rename
-                      </button>
                     </div>
                   </div>
                   <div className='p-4 space-y-3'>
@@ -320,7 +263,7 @@ const PresidentPolicy = () => {
                         </div>
                       ))
                     ) : (
-                      <p className='text-sm text-gray-500'>No sections for this department.</p>
+                      <p className='text-sm text-gray-500'>No sections for this College.</p>
                     )}
                   </div>
                 </div>
@@ -333,10 +276,10 @@ const PresidentPolicy = () => {
       {deptModalOpen && (
         <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
           <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
-            <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create Department</h3>
+            <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create College</h3>
             <form className='space-y-4' onSubmit={submitDepartment}>
               <div>
-                <label className='text-sm font-semibold text-black block mb-1'>Department</label>
+                <label className='text-sm font-semibold text-black block mb-1'>College</label>
                 <select
                   name='name'
                   value={deptForm.name}
@@ -344,7 +287,7 @@ const PresidentPolicy = () => {
                   className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-black'
                   required
                 >
-                  <option value="">Select department</option>
+                  <option value="">Select College</option>
                   {colleges.map((college) => (
                     <option key={college.name} value={college.name}>
                       {college.name}
@@ -373,64 +316,13 @@ const PresidentPolicy = () => {
         </div>
       )}
 
-      {renameModalOpen && (
-        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
-          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
-            <h3 className='text-xl font-semibold text-blue-950 mb-4'>Rename Department</h3>
-            <form className='space-y-4' onSubmit={submitRenameDepartment}>
-              <div>
-                <label className='text-sm font-semibold text-black block mb-1'>Department</label>
-                <input
-                  type='text'
-                  value={renameForm.name}
-                  onChange={(event) =>
-                    setRenameForm((prev) => ({ ...prev, name: event.target.value }))
-                  }
-                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-black'
-                  required
-                />
-              </div>
-              <div>
-                <label className='text-sm font-semibold text-black block mb-1'>Description</label>
-                <textarea
-                  value={renameForm.description}
-                  onChange={(event) =>
-                    setRenameForm((prev) => ({ ...prev, description: event.target.value }))
-                  }
-                  rows={3}
-                  className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                />
-              </div>
-              <div className='flex justify-end gap-2'>
-                <button
-                  type='button'
-                  className='px-4 py-2 text-sm rounded-lg border border-gray-300'
-                  onClick={() => {
-                    setRenameModalOpen(false)
-                    setRenameDept(null)
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type='submit'
-                  className='px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700'
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {sectionModalOpen && (
         <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
           <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
             <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create Section</h3>
             <form className='space-y-4' onSubmit={submitSection}>
               <div>
-                <label className='text-sm font-semibold text-black block mb-1'>Department</label>
+                <label className='text-sm font-semibold text-black block mb-1'>College</label>
                 <select
                   name='departmentId'
                   value={sectionForm.departmentId}
@@ -438,7 +330,7 @@ const PresidentPolicy = () => {
                   className='w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
                   required
                 >
-                  <option value="">Select department</option>
+                  <option value="">Select College</option>
                   {departments.map((dept) => (
                     <option key={dept._id} value={dept._id}>{dept.name}</option>
                   ))}
