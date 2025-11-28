@@ -5,6 +5,7 @@ import { getStudentPolicies, streamPolicySectionFile } from '../controllers/poli
 
 const router = express.Router();
 
+
 router.get('/handbook', publicController.getPublicHandbooks);
 router.get('/handbook/:handbookId/file', publicController.streamHandbookFile);
 router.get('/handbook/:handbookId/download-page', publicController.downloadHandbookPage);

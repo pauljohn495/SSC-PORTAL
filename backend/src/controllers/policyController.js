@@ -4,8 +4,19 @@ import User from '../models/User.js';
 import { logActivity } from '../utils/activityLogger.js';
 import { savePDFToFile, deletePDFFile, readPDFFromFile } from '../utils/fileStorage.js';
 import { slugifyString } from '../utils/slugify.js';
+import { setApiLogHeader } from '../utils/apiLogger.js';
 
 const POLICY_UPLOAD_DIR = 'policies';
+
+const logPolicyApi = (req, res, endpoint, status, message, content) => {
+  setApiLogHeader(res, {
+    method: req?.method || 'GET',
+    endpoint,
+    status,
+    message,
+    content,
+  });
+};
 
 const buildAccessKey = (value = '') => slugifyString(value, 'department');
 
@@ -479,6 +490,7 @@ export const getStudentPolicies = async (req, res, next) => {
 
     const department = await PolicyDepartment.findOne({ accessKey, isArchived: { $ne: true } }).lean();
     if (!department) {
+      logPolicyApi(req, res, '/api/policies', 200, 'No policies for department', { userId });
       return res.json([]);
     }
     const sections = await PolicySection.find({
@@ -488,22 +500,38 @@ export const getStudentPolicies = async (req, res, next) => {
       .sort({ title: 1 })
       .lean();
 
-    res.json([{
+    const responseBody = [{
       ...department,
       sections: sections.map(summarizeSection),
-    }]);
+    }];
+
+    logPolicyApi(req, res, '/api/policies', 200, 'Fetched student policies', {
+      userId,
+      department: department.name,
+      sections: sections.length,
+    });
+
+    return res.json(responseBody);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, '/api/policies', error.statusCode, error.message, { userId: req.query.userId });
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, '/api/policies', 500, 'Failed to fetch student policies');
     next(error);
   }
 };
 
 export const streamPolicySectionFile = async (req, res, next) => {
   try {
+    const endpoint = '/api/policies/sections/:sectionId/file';
     const { sectionId } = req.params;
     const { userId } = req.query;
+    if (!sectionId) {
+      logPolicyApi(req, res, endpoint, 400, 'Section ID is required');
+      return res.status(400).json({ message: 'Section ID is required' });
+    }
+
     let role = 'guest';
     let departmentKey = null;
     if (userId) {
@@ -516,31 +544,39 @@ export const streamPolicySectionFile = async (req, res, next) => {
 
     const section = await PolicySection.findById(sectionId).populate('department');
     if (!section) {
+      logPolicyApi(req, res, endpoint, 404, 'Section not found', { sectionId });
       return res.status(404).json({ message: 'Section not found' });
     }
 
     const isStaff = ['admin', 'president'].includes(role);
     if (section.status !== 'approved' && !isStaff) {
+      logPolicyApi(req, res, endpoint, 403, 'Section not available', { sectionId, role });
       return res.status(403).json({ message: 'Section not available' });
     }
 
     if (!isStaff && role === 'student') {
       if (!section.department || section.department.accessKey !== departmentKey) {
+        logPolicyApi(req, res, endpoint, 403, 'Student lacks access to section', { sectionId, role });
         return res.status(403).json({ message: 'You do not have access to this section' });
       }
     }
 
     if (!section.filePath) {
+      logPolicyApi(req, res, endpoint, 404, 'Section file not found', { sectionId });
       return res.status(404).json({ message: 'File not found' });
     }
 
     const pdfBuffer = readPDFFromFile(section.filePath);
     const fileName = section.fileName || `${section.slug}.pdf`;
+
+    logPolicyApi(req, res, endpoint, 200, 'Streaming policy section file', { sectionId, role });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
     res.send(pdfBuffer);
   } catch (error) {
+    logPolicyApi(req, res, '/api/policies/sections/:sectionId/file', 500, 'Failed to stream policy section file');
     next(error);
   }
 };

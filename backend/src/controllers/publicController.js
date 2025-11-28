@@ -9,6 +9,17 @@ import { readPDFFromFile } from '../utils/fileStorage.js';
 import { PDFDocument } from 'pdf-lib';
 import { downloadFileFromDrive } from '../utils/googleDrive.js';
 import { logActivity } from '../utils/activityLogger.js';
+import { setApiLogHeader } from '../utils/apiLogger.js';
+
+const logPublicApi = (req, res, endpoint, status, message, content) => {
+  setApiLogHeader(res, {
+    method: req?.method || 'GET',
+    endpoint,
+    status,
+    message,
+    content,
+  });
+};
 
 // Get all approved handbooks
 export const getPublicHandbooks = async (req, res, next) => {
@@ -39,14 +50,18 @@ export const getPublicHandbooks = async (req, res, next) => {
       }
     }
     
-    res.json(handbooks);
+    logPublicApi(req, res, '/api/handbook', 200, 'Fetched approved handbooks', { count: handbooks.length });
+    return res.json(handbooks);
   } catch (error) {
+    logPublicApi(req, res, '/api/handbook', 500, 'Failed to fetch approved handbooks');
     next(error);
   }
 };
 
 export const getDepartmentsCatalog = (req, res) => {
-  res.json(getDepartments());
+  const departments = getDepartments();
+  logPublicApi(req, res, '/api/departments', 200, 'Fetched departments catalog', { count: departments.length });
+  return res.json(departments);
 };
 
 // Get all approved memorandums
@@ -54,8 +69,10 @@ export const getPublicMemorandums = async (req, res, next) => {
   try {
     await logActivity('anonymous', 'VIEW_MEMORANDUMS', 'Viewed all approved memorandums', null, req);
     const memorandums = await Memorandum.find({ status: 'approved', archived: { $ne: true } }).sort({ uploadedAt: -1 });
-    res.json(memorandums);
+    logPublicApi(req, res, '/api/memorandums', 200, 'Fetched approved memorandums', { count: memorandums.length });
+    return res.json(memorandums);
   } catch (error) {
+    logPublicApi(req, res, '/api/memorandums', 500, 'Failed to fetch approved memorandums');
     next(error);
   }
 };
@@ -80,8 +97,17 @@ export const getPublicNotifications = async (req, res, next) => {
       .populate('createdBy', 'name email')
       .sort({ publishedAt: -1 });
     await logActivity('anonymous', 'VIEW_NOTIFICATIONS', `Viewed published notifications${department ? ` for department: ${department}` : ''}`, null, req);
-    res.json(notifications);
+    logPublicApi(
+      req,
+      res,
+      '/api/notifications',
+      200,
+      'Fetched published notifications',
+      { count: notifications.length, department: department || 'all' }
+    );
+    return res.json(notifications);
   } catch (error) {
+    logPublicApi(req, res, '/api/notifications', 500, 'Failed to fetch published notifications');
     next(error);
   }
 };
@@ -92,8 +118,10 @@ export const getPublicHandbookSections = async (req, res, next) => {
     await logActivity('anonymous', 'VIEW_HANDBOOK_SECTIONS', 'Viewed all published handbook sections', null, req);
     const sections = await HandbookSection.find({ published: true, status: 'approved' })
       .sort({ order: 1, createdAt: 1 });
-    res.json(sections);
+    logPublicApi(req, res, '/api/handbook-sections', 200, 'Fetched published handbook sections', { count: sections.length });
+    return res.json(sections);
   } catch (error) {
+    logPublicApi(req, res, '/api/handbook-sections', 500, 'Failed to fetch handbook sections');
     next(error);
   }
 };
@@ -104,6 +132,7 @@ export const searchHandbookSections = async (req, res, next) => {
     const searchTerm = typeof query === 'string' ? query.trim() : '';
 
     if (!searchTerm) {
+      logPublicApi(req, res, '/api/handbook-sections/search', 400, 'Search query is required');
       return res.status(400).json({ message: 'Search query is required' });
     }
 
@@ -153,11 +182,23 @@ export const searchHandbookSections = async (req, res, next) => {
       }
     });
 
-    res.json({
+    const responseBody = {
       query: searchTerm,
       results
-    });
+    };
+
+    logPublicApi(
+      req,
+      res,
+      '/api/handbook-sections/search',
+      200,
+      'Handbook sections search completed',
+      { query: searchTerm, matches: results.length }
+    );
+
+    return res.json(responseBody);
   } catch (error) {
+    logPublicApi(req, res, '/api/handbook-sections/search', 500, 'Failed to search handbook sections');
     next(error);
   }
 };
@@ -166,10 +207,14 @@ export const searchHandbookSections = async (req, res, next) => {
 export const sendTestPush = async (req, res, next) => {
   try {
     const { userId, title, body } = req.body;
-    if (!userId) return res.status(400).json({ message: 'userId is required' });
+    if (!userId) {
+      logPublicApi(req, res, '/api/notifications/test-push', 400, 'userId is required');
+      return res.status(400).json({ message: 'userId is required' });
+    }
 
     const user = await User.findById(userId);
     if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
+      logPublicApi(req, res, '/api/notifications/test-push', 404, 'User has no registered FCM tokens');
       return res.status(404).json({ message: 'User has no registered FCM tokens' });
     }
 
@@ -180,8 +225,17 @@ export const sendTestPush = async (req, res, next) => {
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
-    res.json({ successCount: response.successCount, failureCount: response.failureCount, responses: response.responses });
+    logPublicApi(
+      req,
+      res,
+      '/api/notifications/test-push',
+      200,
+      'Test push notification sent',
+      { successCount: response.successCount, failureCount: response.failureCount }
+    );
+    return res.json({ successCount: response.successCount, failureCount: response.failureCount, responses: response.responses });
   } catch (error) {
+    logPublicApi(req, res, '/api/notifications/test-push', 500, 'Failed to send test push notification');
     next(error);
   }
 };
@@ -189,10 +243,12 @@ export const sendTestPush = async (req, res, next) => {
 // Download specific page(s) from handbook
 export const downloadHandbookPage = async (req, res, next) => {
   try {
+    const endpoint = '/api/handbook/:handbookId/download-page';
     const { handbookId } = req.params;
     const { page } = req.query; // Page number (1-indexed) or comma-separated range like "1,3,5" or "1-5"
 
     if (!handbookId) {
+      logPublicApi(req, res, endpoint, 400, 'Handbook ID is required');
       return res.status(400).json({ message: 'Handbook ID is required' });
     }
 
@@ -200,10 +256,12 @@ export const downloadHandbookPage = async (req, res, next) => {
 
     const handbook = await Handbook.findById(handbookId);
     if (!handbook) {
+      logPublicApi(req, res, endpoint, 404, 'Handbook not found', { handbookId });
       return res.status(404).json({ message: 'Handbook not found' });
     }
 
     if (handbook.status !== 'approved' || handbook.archived) {
+      logPublicApi(req, res, endpoint, 403, 'Handbook is not available', { handbookId });
       return res.status(403).json({ message: 'Handbook is not available' });
     }
 
@@ -217,6 +275,7 @@ export const downloadHandbookPage = async (req, res, next) => {
       const base64Data = handbook.fileUrl.split(',')[1];
       pdfBuffer = Buffer.from(base64Data, 'base64');
     } else {
+      logPublicApi(req, res, endpoint, 404, 'Handbook PDF not found', { handbookId });
       return res.status(404).json({ message: 'Handbook PDF not found' });
     }
 
@@ -251,6 +310,14 @@ export const downloadHandbookPage = async (req, res, next) => {
         // Single page
         const pageNum = parseInt(pageStr) - 1;
         if (pageNum < 0 || pageNum >= totalPages) {
+          logPublicApi(
+            req,
+            res,
+            endpoint,
+            400,
+            `Invalid page number. Handbook has ${totalPages} pages.`,
+            { handbookId, requestedPage: pageStr }
+          );
           return res.status(400).json({ message: `Invalid page number. Handbook has ${totalPages} pages.` });
         }
         pagesToExtract = [pageNum];
@@ -297,6 +364,19 @@ export const downloadHandbookPage = async (req, res, next) => {
     // Convert Uint8Array to Buffer for proper binary response
     const responseBuffer = Buffer.from(pdfBytes);
 
+    logPublicApi(
+      req,
+      res,
+      endpoint,
+      200,
+      'Handbook pages ready for download',
+      {
+        handbookId,
+        pagesRequested: page || 'all',
+        totalPages: pagesToExtract.length,
+      }
+    );
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', responseBuffer.length);
@@ -304,8 +384,10 @@ export const downloadHandbookPage = async (req, res, next) => {
   } catch (error) {
     console.error('Error extracting handbook page:', error);
     if (error.message.includes('Invalid page')) {
+      logPublicApi(req, res, endpoint, 400, error.message, { handbookId: req.params.handbookId });
       return res.status(400).json({ message: error.message });
     }
+    logPublicApi(req, res, endpoint, 500, 'Failed to download handbook pages');
     next(error);
   }
 };
@@ -321,8 +403,10 @@ const fetchPdfBufferFromUrl = async (url) => {
 
 export const streamHandbookFile = async (req, res, next) => {
   try {
+    const endpoint = '/api/handbook/:handbookId/file';
     const { handbookId } = req.params;
     if (!handbookId) {
+      logPublicApi(req, res, endpoint, 400, 'Handbook ID is required');
       return res.status(400).json({ message: 'Handbook ID is required' });
     }
 
@@ -330,10 +414,12 @@ export const streamHandbookFile = async (req, res, next) => {
 
     const handbook = await Handbook.findById(handbookId);
     if (!handbook) {
+      logPublicApi(req, res, endpoint, 404, 'Handbook not found', { handbookId });
       return res.status(404).json({ message: 'Handbook not found' });
     }
 
     if (handbook.status !== 'approved' || handbook.archived) {
+      logPublicApi(req, res, endpoint, 403, 'Handbook is not available', { handbookId });
       return res.status(403).json({ message: 'Handbook is not available' });
     }
 
@@ -358,8 +444,11 @@ export const streamHandbookFile = async (req, res, next) => {
     }
 
     if (!pdfBuffer) {
+      logPublicApi(req, res, endpoint, 404, 'Handbook PDF not available', { handbookId });
       return res.status(404).json({ message: 'Handbook PDF not available' });
     }
+
+    logPublicApi(req, res, endpoint, 200, 'Streaming handbook file', { handbookId, fileName: fallbackFileName });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
@@ -367,14 +456,17 @@ export const streamHandbookFile = async (req, res, next) => {
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error streaming handbook file:', error);
+    logPublicApi(req, res, '/api/handbook/:handbookId/file', 500, 'Failed to stream handbook file');
     return next(error);
   }
 };
 
 export const streamHandbookSectionFile = async (req, res, next) => {
   try {
+    const endpoint = '/api/handbook-sections/:sectionId/file';
     const { sectionId } = req.params;
     if (!sectionId) {
+      logPublicApi(req, res, endpoint, 400, 'Section ID is required');
       return res.status(400).json({ message: 'Section ID is required' });
     }
 
@@ -382,10 +474,12 @@ export const streamHandbookSectionFile = async (req, res, next) => {
 
     const section = await HandbookSection.findById(sectionId);
     if (!section) {
+      logPublicApi(req, res, endpoint, 404, 'Section not found', { sectionId });
       return res.status(404).json({ message: 'Section not found' });
     }
 
     if (section.published === false || section.status !== 'approved') {
+      logPublicApi(req, res, endpoint, 403, 'Section is not available', { sectionId });
       return res.status(403).json({ message: 'Section is not available' });
     }
 
@@ -413,8 +507,11 @@ export const streamHandbookSectionFile = async (req, res, next) => {
     }
 
     if (!pdfBuffer) {
+      logPublicApi(req, res, endpoint, 404, 'Section PDF not available', { sectionId });
       return res.status(404).json({ message: 'Section PDF not available' });
     }
+
+    logPublicApi(req, res, endpoint, 200, 'Streaming handbook section file', { sectionId, fileName: fallbackFileName });
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
@@ -422,6 +519,7 @@ export const streamHandbookSectionFile = async (req, res, next) => {
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error streaming handbook section file:', error);
+    logPublicApi(req, res, '/api/handbook-sections/:sectionId/file', 500, 'Failed to stream handbook section file');
     return next(error);
   }
 };

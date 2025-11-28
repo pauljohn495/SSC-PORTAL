@@ -1,5 +1,6 @@
 import { searchAlgolia } from '../services/algoliaService.js';
 import Memorandum from '../models/Memorandum.js';
+import { setApiLogHeader } from '../utils/apiLogger.js';
 
 const escapeRegex = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -85,6 +86,16 @@ const dbFallbackSearch = async ({ query, role, type, year, limit = 50 }) => {
     .slice(0, limit);
 };
 
+const logSearchApi = (req, res, status, message, content) => {
+  setApiLogHeader(res, {
+    method: req?.method || 'GET',
+    endpoint: '/api/search',
+    status,
+    message,
+    content,
+  });
+};
+
 export const searchContent = async (req, res) => {
   try {
     const {
@@ -97,6 +108,7 @@ export const searchContent = async (req, res) => {
     } = req.query;
 
     if (!q.trim()) {
+      logSearchApi(req, res, 400, 'Search query is required');
       return res.status(400).json({ message: 'Search query is required' });
     }
 
@@ -136,7 +148,7 @@ export const searchContent = async (req, res) => {
 
       if (fallbackResults.length > 0) {
         results = fallbackResults;
-        return res.json({
+        const responseBody = {
           query: q.trim(),
           found: fallbackResults.length,
           page: 1,
@@ -144,11 +156,13 @@ export const searchContent = async (req, res) => {
           totalPages: 1,
           results,
           source: 'database'
-        });
+        };
+        logSearchApi(req, res, 200, 'Search served via database fallback', { query: q.trim(), found: fallbackResults.length });
+        return res.json(responseBody);
       }
     }
 
-    res.json({
+    const successResponse = {
       query: q.trim(),
       found: searchResponse.nbHits,
       page: (searchResponse.page || 0) + 1,
@@ -156,9 +170,13 @@ export const searchContent = async (req, res) => {
       totalPages: searchResponse.nbPages,
       results,
       source: 'algolia'
-    });
+    };
+
+    logSearchApi(req, res, 200, 'Search served via Algolia', { query: q.trim(), found: searchResponse.nbHits });
+    return res.json(successResponse);
   } catch (error) {
     console.error('Algolia search error:', error);
+    logSearchApi(req, res, 500, 'Search failed', { error: error.message });
     res.status(500).json({ message: 'Search failed', error: error.message });
   }
 };
