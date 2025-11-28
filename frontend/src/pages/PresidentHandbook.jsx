@@ -313,6 +313,7 @@ const PresidentHandbook = () => {
       setSectionMessageType('error');
       return;
     }
+    
     try {
       setSectionSubmitting(true);
       const payload = {
@@ -340,6 +341,28 @@ const PresidentHandbook = () => {
       });
       const data = await response.json();
       if (!response.ok) {
+        // If the backend says we no longer have edit priority, show "Failed to Update" and close modal
+        if (response.status === 409 && (data.hasPriority === false || data.message?.includes('edit priority'))) {
+          setSectionMessage('Your changes will not be saved');
+          setSectionMessageType('error');
+          setSectionSubmitting(false);
+          // Close modal after showing error
+          setTimeout(() => {
+            setSectionModalOpen(false);
+            setEditingSection(null);
+            setSectionForm({
+              title: '',
+              description: '',
+              order: 0,
+              published: true,
+            });
+            setSectionFile(null);
+            setSectionHasPriority(false);
+            setSectionPriorityError('');
+            fetchSections();
+          }, 1500);
+          return;
+        }
         throw new Error(data.message || 'Failed to save section');
       }
       setSectionMessage(editingSection ? 'Section update submitted for admin approval.' : 'Section submitted for admin approval.');
@@ -856,6 +879,11 @@ const PresidentHandbook = () => {
                           <p className='text-sm text-gray-600'>{section.description}</p>
                         )}
                         <p className='text-xs text-gray-400 mt-1'>Order: {section.order ?? 0}</p>
+                        {section.editedBy && section.editedAt && (
+                          <p className='text-xs text-gray-400 mt-1'>
+                            Last edited: {new Date(section.editedAt).toLocaleString()}
+                          </p>
+                        )}
                         {section.status !== 'approved' && (
                           <p className='text-xs text-orange-600 mt-1'>Waiting for admin approval before publishing.</p>
                         )}
@@ -1064,15 +1092,14 @@ const PresidentHandbook = () => {
                 </button>
                 <button
                   type='submit'
-                  disabled={sectionSubmitting || (editingSection && !sectionHasPriority)}
+                  disabled={sectionSubmitting}
                   className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-                    sectionSubmitting || (editingSection && !sectionHasPriority)
+                    sectionSubmitting
                       ? 'bg-gray-400 cursor-not-allowed text-white'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
                 >
                   {sectionSubmitting ? 'Saving...' : 
-                   editingSection && !sectionHasPriority ? 'No Save Priority' :
                    editingSection ? 'Update Section' : 'Create Section'}
                 </button>
               </div>

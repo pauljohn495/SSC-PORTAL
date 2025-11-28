@@ -21,6 +21,9 @@ const handbookSectionSchema = new mongoose.Schema({
   archivedAt: { type: Date },
   priorityEditor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   priorityEditStartedAt: { type: Date },
+  // Edit tracking fields
+  editedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  editedAt: { type: Date },
 }, { timestamps: true });
 
 const HandbookSection = mongoose.model('HandbookSection', handbookSectionSchema);

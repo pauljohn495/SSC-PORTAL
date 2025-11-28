@@ -1,0 +1,190 @@
+# API Modules Documentation
+
+All API endpoints are prefixed with `/api` base path.
+
+## 1. Authentication Module (`/api/auth`)
+
+### Endpoints:
+- `POST /api/auth/google` - Google OAuth authentication
+- `POST /api/auth/admin` - Admin login
+- `POST /api/auth/forgot-password` - Request password reset
+- `POST /api/auth/reset-password` - Reset password with token
+- `POST /api/auth/setup-account` - Setup account
+- `POST /api/auth/fcm-token` - Register FCM token for push notifications
+- `POST /api/auth/test-email` - Test email (development only)
+- `PUT /api/auth/profile/:id` - Update user profile
+
+---
+
+## 2. Public Module (`/api`)
+
+### Endpoints:
+- `GET /api/handbook` - Get all approved handbooks (public)
+- `GET /api/handbook/:handbookId/file` - Stream handbook file
+- `GET /api/handbook/:handbookId/download-page` - Download handbook page
+- `GET /api/handbook-sections` - Get all approved handbook sections (public)
+- `GET /api/handbook-sections/search` - Search handbook sections
+- `GET /api/handbook-sections/:sectionId/file` - Stream handbook section file
+- `GET /api/memorandums` - Get all approved memorandums (public)
+- `GET /api/notifications` - Get all published notifications (public)
+- `GET /api/departments` - Get departments catalog
+- `POST /api/notifications/test-push` - Send test push notification
+- `GET /api/search` - Search handbooks and memorandums
+- `GET /api/policies` - Get student policies
+- `GET /api/policies/sections/:sectionId/file` - Stream policy section file
+
+---
+
+## 3. Admin Module (`/api/admin`)
+
+### User Management:
+- `GET /api/admin/users` - Get all users
+- `POST /api/admin/add-admin` - Add new admin user
+- `POST /api/admin/add-president` - Add new president user
+- `PUT /api/admin/users/:id/archive` - Archive user
+- `PUT /api/admin/users/:id/restore` - Restore user
+- `DELETE /api/admin/users/:id` - Delete user
+
+### Handbook Management:
+- `GET /api/admin/handbook` - Get all handbooks (with status)
+- `PUT /api/admin/handbook/:id` - Update handbook status (approve/reject)
+- `DELETE /api/admin/handbook/:id` - Delete handbook
+- `PUT /api/admin/handbook/:id/restore` - Restore handbook
+- `DELETE /api/admin/handbook/:id/permanent` - Permanently delete handbook
+- `GET /api/admin/handbook-sections` - Get handbook sections (admin)
+- `PUT /api/admin/handbook-sections/:id/status` - Update handbook section status
+- `DELETE /api/admin/handbook-sections/:id` - Delete handbook section (admin)
+- `PUT /api/admin/handbook-sections/:id/restore` - Restore handbook section (admin)
+- `DELETE /api/admin/handbook-sections/:id/permanent` - Permanently delete handbook section (admin)
+- `GET /api/admin/handbook-sections/archived` - Get archived handbook sections
+
+### Memorandum Management:
+- `GET /api/admin/memorandums` - Get all memorandums (with status)
+- `PUT /api/admin/memorandums/:id` - Update memorandum status (approve/reject)
+- `DELETE /api/admin/memorandums/:id` - Delete memorandum
+- `PUT /api/admin/memorandums/:id/restore` - Restore memorandum
+- `DELETE /api/admin/memorandums/:id/permanent` - Permanently delete memorandum
+
+### Activity Logs:
+- `GET /api/admin/activity-logs` - Get all activity logs
+- `GET /api/admin/archived` - Get archived items
+- `POST /api/admin/backups` - Create manual backup
+- `POST /api/admin/backups/import` - Import backup
+
+### Policy Review:
+- `GET /api/admin/policies/sections` - Get policy sections for review
+- `PUT /api/admin/policies/sections/:sectionId/status` - Review policy section
+- `DELETE /api/admin/policies/sections/:id` - Delete policy section (admin)
+- `PUT /api/admin/policies/sections/:id/restore` - Restore policy section (admin)
+- `DELETE /api/admin/policies/sections/:id/permanent` - Permanently delete policy section (admin)
+- `GET /api/admin/policies/sections/archived` - Get archived policy sections
+
+---
+
+## 4. President Module (`/api/president`)
+
+### Calendar Integration:
+- `GET /api/president/calendar/auth-url` - Get Google Calendar OAuth URL
+- `GET /api/president/calendar/oauth/callback` - OAuth callback handler
+- `GET /api/president/calendar/events` - List calendar events
+- `POST /api/president/calendar/events` - Create calendar event
+- `PUT /api/president/calendar/events/:eventId` - Update calendar event
+- `PUT /api/president/calendar/events/:eventId/archive` - Archive calendar event
+- `GET /api/president/calendar/events/archived` - Get archived calendar events
+- `PUT /api/president/calendar/events/:eventId/restore` - Restore calendar event
+- `DELETE /api/president/calendar/events/:eventId` - Delete calendar event
+
+### Google Drive Integration:
+- `GET /api/president/drive/auth-url` - Get Google Drive OAuth URL
+- `GET /api/president/drive/oauth/callback` - Drive OAuth callback
+- `GET /api/president/drive/status` - Get Drive connection status
+
+### Handbook Management:
+- `POST /api/president/handbook` - Create handbook page
+- `PUT /api/president/handbook/:id` - Update handbook page
+- `POST /api/president/handbook/:id/priority` - Set handbook priority editing
+- `POST /api/president/handbook/:id/clear-priority` - Clear handbook priority
+- `GET /api/president/handbook-sections` - Get handbook sections
+- `POST /api/president/handbook-sections` - Create handbook section
+- `PUT /api/president/handbook-sections/:id` - Update handbook section
+- `POST /api/president/handbook-sections/:id/priority` - Set handbook section priority editing
+- `POST /api/president/handbook-sections/:id/clear-priority` - Clear handbook section priority
+
+### Notification Management:
+- `GET /api/president/notifications` - Get all notifications
+- `POST /api/president/notifications` - Create notification
+- `POST /api/president/notifications/:id/publish` - Publish notification
+- `DELETE /api/president/notifications/:id` - Delete notification
+
+### Memorandum Management:
+- `POST /api/president/memorandums` - Upload/create memorandum
+- `PUT /api/president/memorandums/:id` - Update memorandum
+- `POST /api/president/memorandums/:id/priority` - Set memorandum priority editing
+- `POST /api/president/memorandums/:id/clear-priority` - Clear memorandum priority
+
+### Activity Logs:
+- `GET /api/president/activity-logs` - Get user's activity logs
+
+### Policy Management:
+- `GET /api/president/policies/departments` - Get policy departments
+- `POST /api/president/policies/departments` - Create policy department
+- `PUT /api/president/policies/departments/:id` - Update policy department
+- `POST /api/president/policies/sections` - Create policy section
+- `PUT /api/president/policies/sections/:id` - Update policy section
+- `DELETE /api/president/policies/sections/:id` - Delete policy section
+
+---
+
+## 5. System Module
+
+### Health Check:
+- `GET /api/health` - Server health check endpoint
+
+---
+
+## Additional Features
+
+### Real-time Communication:
+- WebSocket support via Socket.IO (configured in `src/realtime/socket.js`)
+
+### Search Service:
+- Algolia integration for full-text search
+- Database fallback search when Algolia is unavailable
+
+### Push Notifications:
+- Firebase Cloud Messaging (FCM) integration
+- Push notification support for all users
+
+### Activity Logging:
+- Comprehensive activity logging system
+- Tracks user actions across the system
+
+### Priority Editing System:
+- Prevents concurrent edits on handbooks and memorandums
+- Automatic cleanup of stale priority locks
+
+---
+
+## Models
+
+1. **User** - User accounts (student, admin, president)
+2. **Handbook** - Student handbook pages
+3. **HandbookSection** - Handbook sections
+4. **Memorandum** - School memorandums
+5. **Notification** - System notifications
+6. **CalendarEvent** - Calendar events
+7. **PolicyDepartment** - Policy departments
+8. **PolicySection** - Policy sections
+9. **ActivityLog** - User activity tracking
+
+---
+
+## External Services
+
+1. **Algolia** - Search indexing and search service
+2. **Firebase Admin SDK** - Push notifications
+3. **Google OAuth** - Authentication
+4. **Google Calendar API** - Calendar integration
+5. **Google Drive API** - File storage integration
+6. **MongoDB** - Primary database
+7. **Socket.IO** - Real-time communication

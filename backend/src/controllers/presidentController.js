@@ -817,6 +817,7 @@ export const getHandbookSections = async (req, res, next) => {
     const sections = await HandbookSection.find()
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
+      .populate('editedBy', 'name email')
       .sort({ order: 1, createdAt: 1 });
     const response = sections;
     logAndSetHeader(req, res, 'GET', '/api/president/handbook-sections', 200, { sections, count: sections.length });
@@ -933,6 +934,18 @@ export const updateHandbookSection = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
+    // If another user currently holds edit priority, block this save.
+    // If priority is not set at all (e.g., legacy data or a failed priority call),
+    // allow the update so a single user is never locked out.
+    if (section.priorityEditor && section.priorityEditor.toString() !== userId) {
+      const response = { 
+        message: 'You do not have edit priority. Only the first user to click edit can save changes.',
+        hasPriority: false
+      };
+      logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 409, response);
+      return res.status(409).json(response);
+    }
+
     // Optimistic concurrency: if client sends a numeric version and it
     // does not match the current one, reject with a conflict.
     if (Number.isFinite(Number(version))) {
@@ -975,13 +988,22 @@ export const updateHandbookSection = async (req, res, next) => {
     section.approvedBy = null;
     section.approvedAt = null;
     section.updatedBy = userId;
+    section.editedBy = userId;
+    section.editedAt = new Date();
     section.version = (section.version || 1) + 1;
+    section.priorityEditor = null;
+    section.priorityEditStartedAt = null;
     await section.save();
 
     await logActivity(userId, 'handbook_section_update', `Updated handbook sidebar section "${section.title}"`, {
       sectionId: section._id,
       title: section.title,
     }, req);
+
+    // Populate user fields before sending response
+    await section.populate('createdBy', 'name email');
+    await section.populate('updatedBy', 'name email');
+    await section.populate('editedBy', 'name email');
 
     const response = { message: 'Section updated successfully', section };
     logAndSetHeader(req, res, 'PUT', `/api/president/handbook-sections/${id}`, 200, response);

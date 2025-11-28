@@ -8,10 +8,12 @@ import User from '../models/User.js';
 import { readPDFFromFile } from '../utils/fileStorage.js';
 import { PDFDocument } from 'pdf-lib';
 import { downloadFileFromDrive } from '../utils/googleDrive.js';
+import { logActivity } from '../utils/activityLogger.js';
 
 // Get all approved handbooks
 export const getPublicHandbooks = async (req, res, next) => {
   try {
+    await logActivity('anonymous', 'VIEW_HANDBOOKS', 'Viewed all approved handbooks', null, req);
     const handbooks = await Handbook.find({ status: 'approved', archived: { $ne: true } }).sort({ pageNumber: 1 });
     
     // Extract PDF content for handbooks that don't have it yet
@@ -50,6 +52,7 @@ export const getDepartmentsCatalog = (req, res) => {
 // Get all approved memorandums
 export const getPublicMemorandums = async (req, res, next) => {
   try {
+    await logActivity('anonymous', 'VIEW_MEMORANDUMS', 'Viewed all approved memorandums', null, req);
     const memorandums = await Memorandum.find({ status: 'approved', archived: { $ne: true } }).sort({ uploadedAt: -1 });
     res.json(memorandums);
   } catch (error) {
@@ -76,6 +79,7 @@ export const getPublicNotifications = async (req, res, next) => {
     const notifications = await Notification.find(baseFilter)
       .populate('createdBy', 'name email')
       .sort({ publishedAt: -1 });
+    await logActivity('anonymous', 'VIEW_NOTIFICATIONS', `Viewed published notifications${department ? ` for department: ${department}` : ''}`, null, req);
     res.json(notifications);
   } catch (error) {
     next(error);
@@ -85,6 +89,7 @@ export const getPublicNotifications = async (req, res, next) => {
 // Get published handbook sidebar sections
 export const getPublicHandbookSections = async (req, res, next) => {
   try {
+    await logActivity('anonymous', 'VIEW_HANDBOOK_SECTIONS', 'Viewed all published handbook sections', null, req);
     const sections = await HandbookSection.find({ published: true, status: 'approved' })
       .sort({ order: 1, createdAt: 1 });
     res.json(sections);
@@ -101,6 +106,8 @@ export const searchHandbookSections = async (req, res, next) => {
     if (!searchTerm) {
       return res.status(400).json({ message: 'Search query is required' });
     }
+
+    await logActivity('anonymous', 'SEARCH_HANDBOOK_SECTIONS', `Searched handbook sections with query: "${searchTerm}"`, null, req);
 
     const normalized = searchTerm.toLowerCase();
     const sections = await HandbookSection.find({
@@ -188,6 +195,8 @@ export const downloadHandbookPage = async (req, res, next) => {
     if (!handbookId) {
       return res.status(400).json({ message: 'Handbook ID is required' });
     }
+
+    await logActivity('anonymous', 'DOWNLOAD_HANDBOOK_PAGE', `Downloaded handbook pages: ${page || 'all'}`, handbookId, req);
 
     const handbook = await Handbook.findById(handbookId);
     if (!handbook) {
@@ -317,6 +326,8 @@ export const streamHandbookFile = async (req, res, next) => {
       return res.status(400).json({ message: 'Handbook ID is required' });
     }
 
+    await logActivity('anonymous', 'STREAM_HANDBOOK_FILE', 'Streamed handbook file', handbookId, req);
+
     const handbook = await Handbook.findById(handbookId);
     if (!handbook) {
       return res.status(404).json({ message: 'Handbook not found' });
@@ -366,6 +377,8 @@ export const streamHandbookSectionFile = async (req, res, next) => {
     if (!sectionId) {
       return res.status(400).json({ message: 'Section ID is required' });
     }
+
+    await logActivity('anonymous', 'STREAM_HANDBOOK_SECTION_FILE', 'Streamed handbook section file', sectionId, req);
 
     const section = await HandbookSection.findById(sectionId);
     if (!section) {

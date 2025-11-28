@@ -3,6 +3,11 @@ import User from '../models/User.js';
 
 export const logActivity = async (userId, action, description, details = null, req = null) => {
   try {
+    // Skip logging if we don't have a real user id (e.g., public/anonymous access)
+    if (!userId || userId === 'anonymous') {
+      return;
+    }
+
     let actualUserId = userId;
 
     // Handle special system admin actions

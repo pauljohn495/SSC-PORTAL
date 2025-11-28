@@ -297,15 +297,25 @@ const PresidentMemorandum = () => {
         setShowModal(false);
         fetchMemorandums(); // Refresh the list
       } else {
-        // If the backend says we no longer have edit priority,
-        // reflect that in the UI so the green banner + button state
-        // stay consistent with the real server state.
-        if (response.status === 409 && data.hasPriority === false) {
+        // If the backend says we no longer have edit priority, show "Failed to Update" and close modal
+        if (response.status === 409 && (data.hasPriority === false || data.message?.includes('edit priority'))) {
           setHasPriority(false);
           setPriorityError(data.message || 'You no longer have edit priority for this document.');
+          setMessage('Your changes will not be saved');
+          setMessageType('error');
+          // Close modal after showing error
+          setTimeout(() => {
+            setShowModal(false);
+            setEditingMemorandum(null);
+            setEditTitle('');
+            setEditYear('');
+            setEditFile(null);
+            fetchMemorandums(); // Refresh the list
+          }, 1500);
+        } else {
+          setMessage(data.message || 'Failed to update memorandum. Please try again.');
+          setMessageType('error');
         }
-        setMessage(data.message || 'Failed to update memorandum. Please try again.');
-        setMessageType('error');
       }
     } catch (error) {
       console.error('Error updating memorandum:', error);
@@ -584,15 +594,14 @@ const PresidentMemorandum = () => {
               <div className='flex space-x-4'>
                 <button
                   type='submit'
-                  disabled={uploading || (editingMemorandum && !hasPriority)}
+                  disabled={uploading}
                   className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
-                    uploading || (editingMemorandum && !hasPriority)
+                    uploading
                       ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
                 >
                   {uploading ? (editingMemorandum ? 'Updating...' : 'Creating...') : 
-                   editingMemorandum && !hasPriority ? 'No Save Priority' :
                    editingMemorandum ? 'Update Memorandum' : 'Create Memorandum'}
                 </button>
                 <button
