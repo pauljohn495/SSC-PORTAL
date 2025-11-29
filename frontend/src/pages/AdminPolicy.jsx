@@ -3,16 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Swal from 'sweetalert2'
 
-const statusFilters = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' }
-]
-
 const AdminPolicy = () => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [status, setStatus] = useState('pending')
   const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -26,14 +19,14 @@ const AdminPolicy = () => {
       navigate('/login')
       return
     }
-    fetchSections(status)
-  }, [user?._id, status, isAuthorized, navigate])
+    fetchSections()
+  }, [user?._id, isAuthorized, navigate])
 
-  const fetchSections = async (filterStatus) => {
+  const fetchSections = async () => {
     try {
       setLoading(true)
       setError('')
-      const response = await fetch(`/api/admin/policies/sections?status=${filterStatus}`)
+      const response = await fetch(`/api/admin/policies/sections`)
       if (!response.ok) {
         throw new Error('Failed to load policy sections')
       }
@@ -75,7 +68,7 @@ const AdminPolicy = () => {
       if (!response.ok) {
         throw new Error(data.message || 'Failed to update status')
       }
-      fetchSections(status)
+      fetchSections()
     } catch (err) {
       console.error('Error updating section status:', err)
       setError(err.message || 'Failed to update section status')
@@ -115,7 +108,7 @@ const AdminPolicy = () => {
         timer: 1500,
         showConfirmButton: false
       })
-      fetchSections(status)
+      fetchSections()
     } catch (err) {
       console.error('Error archiving section:', err)
       Swal.fire({
@@ -168,18 +161,6 @@ const AdminPolicy = () => {
               <h1 className='text-3xl font-bold text-blue-950'>Policy Approvals</h1>
               <p className='text-gray-600'>Review sections submitted by the president.</p>
             </div>
-            <div className='flex items-center gap-2 bg-white rounded-lg shadow px-3 py-2'>
-              <span className='text-sm font-semibold text-gray-600'>Status:</span>
-              <select
-                value={status}
-                onChange={(event) => setStatus(event.target.value)}
-                className='border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-black'
-              >
-                {statusFilters.map((filter) => (
-                  <option key={filter.value} value={filter.value}>{filter.label}</option>
-                ))}
-              </select>
-            </div>
           </div>
 
           {error && (
@@ -191,7 +172,7 @@ const AdminPolicy = () => {
           {loading ? (
             <div className='text-center text-gray-500 py-12'>Loading sections...</div>
           ) : sections.length === 0 ? (
-            <div className='text-center text-gray-500 py-12 bg-white rounded-lg shadow'>No sections found for this status.</div>
+            <div className='text-center text-gray-500 py-12 bg-white rounded-lg shadow'>No sections found.</div>
           ) : (
             <div className='bg-white rounded-lg shadow overflow-hidden'>
               <div className='grid grid-cols-12 gap-4 px-4 py-3 border-b text-sm font-semibold text-gray-600'>
@@ -221,7 +202,7 @@ const AdminPolicy = () => {
                     {new Date(section.createdAt).toLocaleString()}
                   </div>
                   <div className='col-span-2 flex items-center justify-end gap-2'>
-                    {status === 'pending' ? (
+                    {section.status === 'pending' ? (
                       <>
                         <button
                           onClick={() => reviewSection(section._id, 'rejected')}
@@ -239,21 +220,26 @@ const AdminPolicy = () => {
                         </button>
                       </>
                     ) : (
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        section.status === 'approved'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {section.status.toUpperCase()}
-                      </span>
+                      <>
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                          section.status === 'approved'
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {section.status.toUpperCase()}
+                        </span>
+                        <button
+                          onClick={() => archiveSection(section._id)}
+                          disabled={actionLoadingId === section._id}
+                          className='text-gray-400 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                          title='Archive'
+                        >
+                          <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' />
+                          </svg>
+                        </button>
+                      </>
                     )}
-                    <button
-                      onClick={() => archiveSection(section._id)}
-                      disabled={actionLoadingId === section._id}
-                      className='px-3 py-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-xs font-semibold disabled:opacity-50'
-                    >
-                      Archive
-                    </button>
                   </div>
                 </div>
               ))}

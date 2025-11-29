@@ -8,6 +8,7 @@ const AdminMemorandum = () => {
   const navigate = useNavigate();
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [archivingId, setArchivingId] = useState(null);
 
   const isAuthorized = !!user && user.role === 'admin';
 
@@ -109,6 +110,7 @@ const AdminMemorandum = () => {
       return;
     }
     try {
+      setArchivingId(id);
       const response = await fetch(`http://localhost:5001/api/admin/memorandums/${id}`, {
         method: 'DELETE'
       });
@@ -125,10 +127,30 @@ const AdminMemorandum = () => {
       }
       
       if (response.ok) {
-        fetchDrafts(); // Refresh list
+        // Optimistically update the UI by removing the archived item
+        setDrafts(prevDrafts => prevDrafts.filter(draft => draft._id !== id));
+        Swal.fire({
+          icon: 'success',
+          title: 'Archived',
+          text: 'Memorandum has been archived.',
+          timer: 1500,
+          showConfirmButton: false
+        });
+      } else {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to archive memorandum');
       }
     } catch (error) {
       console.error('Error deleting memorandum:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to archive memorandum'
+      });
+      // Refresh list on error to ensure consistency
+      fetchDrafts();
+    } finally {
+      setArchivingId(null);
     }
   };
 
@@ -273,7 +295,8 @@ const AdminMemorandum = () => {
                           )}
                           <button
                             onClick={() => handleArchive(draft._id)}
-                            className='text-gray-400 hover:text-orange-600 transition-colors'
+                            disabled={archivingId === draft._id}
+                            className='text-gray-400 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
                             title='Archive'
                           >
                             <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>

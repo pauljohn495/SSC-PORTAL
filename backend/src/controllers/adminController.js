@@ -1293,8 +1293,13 @@ export const deleteMemorandum = async (req, res, next) => {
       title: memorandum.title 
     }, req);
 
-    // Notify president via email
-    await notifyPresident(
+    // Send response immediately
+    const response = { message: 'Memorandum archived successfully' };
+    logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 200, response);
+    res.json(response);
+
+    // Notify president via email (non-blocking)
+    notifyPresident(
       'Memorandum Deleted',
       `
         <h2>Memorandum Deleted</h2>
@@ -1307,11 +1312,7 @@ export const deleteMemorandum = async (req, res, next) => {
         <hr>
         <p style="color: #666; font-size: 12px;">This is an automated notification from BUKSU Supreme Student Council Portal.</p>
       `
-    );
-
-    const response = { message: 'Memorandum archived successfully' };
-    logAndSetHeader(req, res, 'DELETE', `/api/admin/memorandums/${id}`, 200, response);
-    res.json(response);
+    ).catch(err => console.error('Background email notification failed:', err));
   } catch (error) {
     next(error);
   }

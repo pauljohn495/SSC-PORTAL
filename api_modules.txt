@@ -126,12 +126,10 @@ All API endpoints are prefixed with `/api` base path.
 - `GET /api/president/activity-logs` - Get user's activity logs
 
 ### Policy Management:
-- `GET /api/president/policies/departments` - Get policy departments
 - `POST /api/president/policies/departments` - Create policy department
 - `PUT /api/president/policies/departments/:id` - Update policy department
 - `POST /api/president/policies/sections` - Create policy section
 - `PUT /api/president/policies/sections/:id` - Update policy section
-- `DELETE /api/president/policies/sections/:id` - Delete policy section
 
 ---
 

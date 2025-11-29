@@ -226,21 +226,15 @@ const AdminHandbook = () => {
                             {sectionActionId === section._id ? 'Processing...' : 'Approve'}
                           </button>
                         )}
-                        {section.status === 'approved' && (
-                          <button
-                            onClick={() => updateSectionStatus(section._id, 'rejected')}
-                            disabled={sectionActionId === section._id}
-                            className='px-4 py-2 text-sm font-semibold text-yellow-600 hover:text-yellow-800 transition disabled:opacity-50 disabled:cursor-not-allowed'
-                          >
-                            {sectionActionId === section._id ? 'Processing...' : 'Reject'}
-                          </button>
-                        )}
                         <button
                           onClick={() => handleArchiveSection(section)}
                           disabled={sectionActionId === section._id}
-                          className='px-4 py-2 text-sm font-semibold text-gray-600 hover:text-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed'
+                          className='text-gray-400 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                          title='Archive'
                         >
-                          {sectionActionId === section._id ? 'Archiving...' : 'Archive'}
+                          <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4' />
+                          </svg>
                         </button>
                       </div>
                     </div>

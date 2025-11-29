@@ -83,8 +83,10 @@ export const getPresidentPolicyDepartments = async (req, res, next) => {
       ...dept,
       sections: sectionsByDept[dept._id.toString()] || [],
     }));
+    logPolicyApi(req, res, '/api/president/policies/departments', 200, 'Fetched policy departments', { count: payload.length });
     res.json(payload);
   } catch (error) {
+    logPolicyApi(req, res, '/api/president/policies/departments', 500, 'Failed to fetch policy departments');
     next(error);
   }
 };
@@ -95,6 +97,7 @@ export const createPolicyDepartment = async (req, res, next) => {
     const user = await ensureUserRole(userId, ['president']);
 
     if (!name) {
+      logPolicyApi(req, res, '/api/president/policies/departments', 400, 'Department name is required');
       return res.status(400).json({ message: 'Department name is required' });
     }
 
@@ -105,6 +108,7 @@ export const createPolicyDepartment = async (req, res, next) => {
       $or: [{ name: name.trim() }, { accessKey }],
     });
     if (existing) {
+      logPolicyApi(req, res, '/api/president/policies/departments', 409, 'Department already exists');
       return res.status(409).json({ message: 'Department already exists' });
     }
 
@@ -122,11 +126,14 @@ export const createPolicyDepartment = async (req, res, next) => {
       departmentId: department._id,
     }, req);
 
+    logPolicyApi(req, res, '/api/president/policies/departments', 201, 'Created policy department', { departmentId: department._id });
     res.status(201).json(department);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, '/api/president/policies/departments', error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, '/api/president/policies/departments', 500, 'Failed to create policy department');
     next(error);
   }
 };
@@ -139,6 +146,7 @@ export const updatePolicyDepartment = async (req, res, next) => {
 
     const department = await PolicyDepartment.findById(id);
     if (!department || department.isArchived) {
+      logPolicyApi(req, res, '/api/president/policies/departments/:id', 404, 'Department not found', { id });
       return res.status(404).json({ message: 'Department not found' });
     }
 
@@ -147,6 +155,7 @@ export const updatePolicyDepartment = async (req, res, next) => {
     if (Number.isFinite(Number(version))) {
       const numericVersion = Number(version);
       if (department.version !== numericVersion) {
+        logPolicyApi(req, res, '/api/president/policies/departments/:id', 409, 'Department version conflict', { id });
         return res.status(409).json({ message: 'Department has been modified. Please refresh and try again.' });
       }
     }
@@ -158,6 +167,7 @@ export const updatePolicyDepartment = async (req, res, next) => {
         _id: { $ne: id },
       });
       if (existing) {
+        logPolicyApi(req, res, '/api/president/policies/departments/:id', 409, 'Department name already used', { id });
         return res.status(409).json({ message: 'Another department already uses that name' });
       }
       department.name = name.trim();
@@ -179,11 +189,14 @@ export const updatePolicyDepartment = async (req, res, next) => {
       departmentId: department._id,
     }, req);
 
+    logPolicyApi(req, res, '/api/president/policies/departments/:id', 200, 'Updated policy department', { id });
     res.json(department);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, '/api/president/policies/departments/:id', error.statusCode, error.message, { id: req.params.id });
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, '/api/president/policies/departments/:id', 500, 'Failed to update policy department', { id: req.params.id });
     next(error);
   }
 };
@@ -196,6 +209,7 @@ export const deletePolicySection = async (req, res, next) => {
 
     const section = await PolicySection.findById(id);
     if (!section) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${id}`, 404, 'Section not found');
       return res.status(404).json({ message: 'Section not found' });
     }
 
@@ -236,11 +250,14 @@ export const deletePolicySectionAdmin = async (req, res, next) => {
       sectionId: section._id,
     }, req);
 
+    logPolicyApi(req, res, `/api/admin/policies/sections/${id}`, 200, 'Archived policy section');
     res.json({ message: 'Section archived' });
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}`, error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}`, 500, 'Failed to archive policy section');
     next(error);
   }
 };
@@ -253,10 +270,12 @@ export const restorePolicySectionAdmin = async (req, res, next) => {
 
     const section = await PolicySection.findById(id);
     if (!section) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${id}/restore`, 404, 'Section not found');
       return res.status(404).json({ message: 'Section not found' });
     }
 
     if (!section.archived) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${id}/restore`, 400, 'Section is not archived');
       return res.status(400).json({ message: 'Section is not archived' });
     }
 
@@ -268,11 +287,14 @@ export const restorePolicySectionAdmin = async (req, res, next) => {
       sectionId: section._id,
     }, req);
 
+    logPolicyApi(req, res, `/api/admin/policies/sections/${id}/restore`, 200, 'Restored policy section');
     res.json({ message: 'Section restored', section });
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}/restore`, error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}/restore`, 500, 'Failed to restore policy section');
     next(error);
   }
 };
@@ -285,6 +307,7 @@ export const permanentlyDeletePolicySectionAdmin = async (req, res, next) => {
 
     const section = await PolicySection.findById(id);
     if (!section) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${id}/permanent`, 404, 'Section not found');
       return res.status(404).json({ message: 'Section not found' });
     }
 
@@ -297,11 +320,14 @@ export const permanentlyDeletePolicySectionAdmin = async (req, res, next) => {
       sectionId: section._id,
     }, req);
 
+    logPolicyApi(req, res, `/api/admin/policies/sections/${id}/permanent`, 200, 'Permanently deleted policy section');
     res.json({ message: 'Section deleted permanently' });
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}/permanent`, error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.id}/permanent`, 500, 'Failed to delete policy section permanently');
     next(error);
   }
 };
@@ -312,17 +338,21 @@ export const createPolicySection = async (req, res, next) => {
     const user = await ensureUserRole(userId, ['president']);
 
     if (!departmentId) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 400, 'Department is required');
       return res.status(400).json({ message: 'Department is required' });
     }
     if (!title) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 400, 'Section title is required');
       return res.status(400).json({ message: 'Section title is required' });
     }
     if (!fileUrl) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 400, 'PDF file is required');
       return res.status(400).json({ message: 'PDF file is required' });
     }
 
     const department = await PolicyDepartment.findById(departmentId);
     if (!department || department.isArchived) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 404, 'Department not found', { departmentId });
       return res.status(404).json({ message: 'Department not found' });
     }
 
@@ -345,11 +375,14 @@ export const createPolicySection = async (req, res, next) => {
       departmentId,
     }, req);
 
+    logPolicyApi(req, res, '/api/president/policies/sections', 201, 'Created policy section', { sectionId: section._id });
     res.status(201).json(section);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, '/api/president/policies/sections', error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, '/api/president/policies/sections', 500, 'Failed to create policy section');
     next(error);
   }
 };
@@ -362,12 +395,14 @@ export const updatePolicySection = async (req, res, next) => {
 
     const section = await PolicySection.findById(id);
     if (!section) {
+      logPolicyApi(req, res, '/api/president/policies/sections/:id', 404, 'Section not found', { id });
       return res.status(404).json({ message: 'Section not found' });
     }
 
     if (departmentId && departmentId !== section.department.toString()) {
       const department = await PolicyDepartment.findById(departmentId);
       if (!department) {
+        logPolicyApi(req, res, '/api/president/policies/sections/:id', 404, 'Target department not found', { departmentId });
         return res.status(404).json({ message: 'Target department not found' });
       }
       section.department = departmentId;
@@ -409,28 +444,41 @@ export const updatePolicySection = async (req, res, next) => {
       sectionId: section._id,
     }, req);
 
+    logPolicyApi(req, res, '/api/president/policies/sections/:id', 200, 'Updated policy section', { id });
     res.json(section);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, '/api/president/policies/sections/:id', error.statusCode, error.message, { id: req.params.id });
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, '/api/president/policies/sections/:id', 500, 'Failed to update policy section', { id: req.params.id });
     next(error);
   }
 };
 
 export const getPolicySectionsForReview = async (req, res, next) => {
   try {
-    const { status = 'pending' } = req.query;
+    const { status } = req.query;
     const validStatuses = ['pending', 'approved', 'rejected'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid status filter' });
+    
+    // Build query - if status is provided, validate and filter by it, otherwise get all
+    const query = { archived: { $ne: true } };
+    if (status) {
+      if (!validStatuses.includes(status)) {
+        logPolicyApi(req, res, '/api/admin/policies/sections', 400, 'Invalid status filter', { status });
+        return res.status(400).json({ message: 'Invalid status filter' });
+      }
+      query.status = status;
     }
-    const sections = await PolicySection.find({ status, archived: { $ne: true } })
+    
+    const sections = await PolicySection.find(query)
       .populate('department', 'name accessKey')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
+    logPolicyApi(req, res, '/api/admin/policies/sections', 200, 'Fetched policy sections for review', { status: status || 'all', count: sections.length });
     res.json(sections);
   } catch (error) {
+    logPolicyApi(req, res, '/api/admin/policies/sections', 500, 'Failed to fetch policy sections for review');
     next(error);
   }
 };
@@ -441,8 +489,10 @@ export const getArchivedPolicySections = async (req, res, next) => {
       .populate('department', 'name accessKey')
       .populate('createdBy', 'name email')
       .sort({ archivedAt: -1 });
+    logPolicyApi(req, res, '/api/admin/policies/sections/archived', 200, 'Fetched archived policy sections', { count: sections.length });
     res.json(sections);
   } catch (error) {
+    logPolicyApi(req, res, '/api/admin/policies/sections/archived', 500, 'Failed to fetch archived policy sections');
     next(error);
   }
 };
@@ -454,11 +504,13 @@ export const reviewPolicySection = async (req, res, next) => {
     const admin = await ensureUserRole(adminId, ['admin']);
 
     if (!['approved', 'rejected'].includes(status)) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${sectionId}/status`, 400, 'Invalid status', { status });
       return res.status(400).json({ message: 'Invalid status' });
     }
 
     const section = await PolicySection.findById(sectionId);
     if (!section) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${sectionId}/status`, 404, 'Section not found');
       return res.status(404).json({ message: 'Section not found' });
     }
 
@@ -473,11 +525,14 @@ export const reviewPolicySection = async (req, res, next) => {
       status,
     }, req);
 
+    logPolicyApi(req, res, `/api/admin/policies/sections/${sectionId}/status`, 200, 'Reviewed policy section', { status });
     res.json(section);
   } catch (error) {
     if (error.statusCode) {
+      logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.sectionId}/status`, error.statusCode, error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
+    logPolicyApi(req, res, `/api/admin/policies/sections/${req.params.sectionId}/status`, 500, 'Failed to review policy section');
     next(error);
   }
 };

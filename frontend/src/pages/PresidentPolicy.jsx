@@ -15,7 +15,6 @@ const PresidentPolicy = () => {
   const [sectionFile, setSectionFile] = useState(null)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
 
   const isAuthorized = useMemo(() => user?.role === 'president', [user?.role])
 
@@ -139,15 +138,6 @@ const PresidentPolicy = () => {
     }
   }
 
-  const filteredDepartments = useMemo(() => {
-    if (statusFilter === 'all') {
-      return departments
-    }
-    return departments.map((dept) => ({
-      ...dept,
-      sections: (dept.sections || []).filter((section) => section.status === statusFilter)
-    }))
-  }, [departments, statusFilter])
 
   if (!isAuthorized) {
     return <div>Access Denied</div>
@@ -209,27 +199,13 @@ const PresidentPolicy = () => {
             </div>
           )}
 
-          <div className='bg-white rounded-lg shadow-md p-4 flex items-center justify-between'>
-            <span className='text-sm font-semibold text-gray-600'>Filter sections:</span>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className='border border-gray-300 rounded-lg px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-          </div>
-
           {loading ? (
             <div className='text-center text-gray-500 py-12'>Loading College...</div>
-          ) : filteredDepartments.length === 0 ? (
+          ) : departments.length === 0 ? (
             <div className='text-center text-gray-500 py-12 bg-white rounded-lg shadow'>No College yet.</div>
           ) : (
             <div className='space-y-6'>
-              {filteredDepartments.map((department) => (
+              {departments.map((department) => (
                 <div key={department._id} className='bg-white rounded-lg shadow border border-gray-200'>
                   <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b border-gray-100 p-4'>
                     <div>
