@@ -759,60 +759,60 @@ const StudentHandbook = () => {
   return (
     <div className='bg-white min-h-screen'>
       {/* Header */}
-      <header className='bg-blue-950 text-white p-4 flex justify-between items-center' style={{ height: '64px' }}>
-        <div className='flex items-center space-x-4' style={{ height: '100%' }}>
-          <Link to="/" className='flex items-center space-x-4'>
-            <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" style={{ maxHeight: '128px', width: 'auto' }} />
-            <img src="/src/assets/ssc-logo.png" alt="SSC Logo" style={{ maxHeight: '128px', width: 'auto' }} />
+      <header className='bg-blue-950 text-white p-2 sm:p-4 flex justify-between items-center min-h-[64px]'>
+        <div className='flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0'>
+          <Link to="/" className='flex items-center space-x-1 sm:space-x-4 flex-shrink-0'>
+            <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='h-8 sm:h-12 md:h-16 w-auto' />
+            <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='h-8 sm:h-12 md:h-16 w-auto hidden sm:block' />
           </Link>
-          <div className='flex flex-col justify-center' style={{ height: '100%' }}>
-            <span className='text-lg font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
-            <span className='text-sm font-semibold leading-none pt-2'>SUPREME STUDENT COUNCIL</span>
+          <div className='flex flex-col justify-center min-w-0 flex-1'>
+            <span className='text-xs sm:text-sm md:text-lg font-bold leading-tight truncate'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-semibold leading-tight truncate'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
-        <div className='flex items-center space-x-2'>
+        <div className='flex items-center space-x-1 sm:space-x-2 flex-shrink-0'>
           {user && user.role === 'admin' && (
             <button
-              className='bg-white text-blue-950 px-4 py-2 rounded-lg font-semibold hover:bg-gray-200 transition cursor-pointer'
+              className='bg-white text-blue-950 px-2 sm:px-4 py-1 sm:py-2 rounded-lg text-xs sm:text-sm md:text-base font-semibold hover:bg-gray-200 transition cursor-pointer whitespace-nowrap'
               onClick={() => navigate('/admin-dashboard')}
             >
-              Admin Dashboard
+              <span className='hidden sm:inline'>Admin Dashboard</span>
+              <span className='sm:hidden'>Admin</span>
             </button>
           )}
           {user && <NotificationDropdown />}
-          <button
-            className='text-white hover:bg-blue-900 p-2 rounded-lg transition cursor-pointer'
-            onClick={toggleMenu}
-            aria-label="Menu"
-          >
-            <div className='w-6 h-0.5 bg-white mb-1'></div>
-            <div className='w-6 h-0.5 bg-white mb-1'></div>
-            <div className='w-6 h-0.5 bg-white'></div>
-          </button>
+          <div className='relative'>
+            <button
+              className='text-white hover:bg-blue-900 p-1 sm:p-2 rounded-lg transition cursor-pointer'
+              onClick={toggleMenu}
+              aria-label="Menu"
+            >
+              <div className='w-5 sm:w-6 h-0.5 bg-white mb-1'></div>
+              <div className='w-5 sm:w-6 h-0.5 bg-white mb-1'></div>
+              <div className='w-5 sm:w-6 h-0.5 bg-white'></div>
+            </button>
+            {menuOpen && (
+              <div className='absolute right-0 mt-2 w-48 sm:w-56 bg-white text-blue-950 rounded-lg shadow-lg z-50'>
+                <ul className='py-2'>
+                  <li className='px-4 py-2'><Link to="/" className="hover:underline block" onClick={() => setMenuOpen(false)}>Home</Link></li>
+                  <li className='px-4 py-2'><Link to="/student-handbook" className="hover:underline block" onClick={() => setMenuOpen(false)}>Handbook</Link></li>
+                  <li className='px-4 py-2'><Link to="/policy" className="hover:underline block" onClick={() => setMenuOpen(false)}>Policies</Link></li>
+                  <li className='px-4 py-2'><Link to="/memorandum" className="hover:underline block" onClick={() => setMenuOpen(false)}>Memorandum</Link></li>
+                  <li className='px-4 py-2'><Link to="/buksu-calendar" className="hover:underline block" onClick={() => setMenuOpen(false)}>BUKSU Calendar</Link></li>
+                  <li className='px-4 py-2'><button onClick={() => { handleLogout(); setMenuOpen(false); }} className="hover:underline text-left w-full">Logout</button></li>
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Menu (if open) */}
-      {menuOpen && (
-        <div className='bg-blue-900 text-white p-4 absolute right-0 top-16 w-48 shadow-lg'>
-          <ul>
-            <li className='py-2'><Link to="/" className="hover:underline">Home</Link></li>
-            <li className='py-2'><Link to="/student-handbook" className="hover:underline">Handbook</Link></li>
-            <li className='py-2'><Link to="/policy" className="hover:underline">Policies</Link></li>
-            <li className='py-2'><Link to="/memorandum" className="hover:underline">Memorandum</Link></li>
-            <li className='py-2'><Link to="/buksu-calendar" className="hover:underline">BUKSU Calendar</Link></li>
-
-            <li className='py-2'><button onClick={handleLogout} className="hover:underline text-left w-full">Logout</button></li>
-          </ul>
-        </div>
-      )}
-
       {/* Main Content */}
-      <main className='p-6 md:p-8'>
+      <main className='p-4 sm:p-6 md:p-8'>
         <div className='max-w-6xl mx-auto relative'>
-          <div className='flex justify-between items-center mb-6'>
+          <div className='flex justify-between items-center mb-4 sm:mb-6'>
             <div className='flex-1'></div>
-            <h1 className='text-3xl font-bold text-center flex-1 text-blue-950'>STUDENT HANDBOOK</h1>
+            <h1 className='text-xl sm:text-2xl md:text-3xl font-bold text-center flex-1 text-blue-950'>STUDENT HANDBOOK</h1>
             {/* Download Button */}
             {!loading && activeDocument ? (
               <div className='relative flex-1 flex justify-end' ref={downloadMenuRef}>

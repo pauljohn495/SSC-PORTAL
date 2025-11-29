@@ -21,6 +21,7 @@ const PresidentNotifications = () => {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const resetForm = () => {
     setTitle('');
@@ -215,59 +216,90 @@ const PresidentNotifications = () => {
   };
 
   return (
-    <div className='bg-white min-h-screen flex'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
       {/* Sidebar Panel */}
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <Link to="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
             </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
-          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
-          <li><Link to="/president-notifications" className="block py-2 px-4 bg-blue-800 rounded transition">Notifications</Link></li>
-          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Calendar</Link></li>
+          <li><Link to="/president-notifications" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Notifications</Link></li>
+          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 bg-gray-100 p-8">
+      <main className="flex-1 bg-gray-100 p-4 sm:p-6 md:p-8">
         <div className="max-w-6xl mx-auto">
           {!isAuthorized ? (
             <div>Access Denied</div>
           ) : (
           <>
-          <div className='flex justify-between items-center mb-8'>
-            <h1 className='text-3xl font-bold text-blue-950'>Notifications</h1>
-            <div className='flex items-center space-x-4'>
+          <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8'>
+            <h1 className='text-2xl sm:text-3xl font-bold text-blue-950'>Notifications</h1>
+            <div className='flex items-center space-x-2 sm:space-x-4 flex-wrap'>
               <button 
                 onClick={() => { setLoading(true); fetchNotifications(); }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded transition flex items-center space-x-2 min-h-[44px]"
                 title="Refresh page data"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Refresh</span>
+                <span className='hidden sm:inline'>Refresh</span>
               </button>
               <button
                 onClick={() => {
                   resetForm();
                   setShowModal(true);
                 }}
-                className='bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors'
+                className='bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2 rounded-lg font-semibold transition-colors min-h-[44px] whitespace-nowrap'
               >
                 Create Notification
               </button>
@@ -291,29 +323,29 @@ const PresidentNotifications = () => {
             ) : (
               <div>
                 {notifications.map((notification, index) => (
-                  <div key={notification._id} className={`flex items-center justify-between border-b border-gray-200 hover:bg-gray-50 p-6 ${
+                  <div key={notification._id} className={`flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-gray-200 hover:bg-gray-50 p-4 sm:p-6 gap-4 ${
                     index === 0 ? 'rounded-t-lg' : ''
                   } ${index === notifications.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
-                    <div className='flex-1'>
-                      <div className='flex items-center space-x-2 mb-2'>
-                        <h3 className='text-lg font-semibold text-blue-950'>{notification.title}</h3>
+                    <div className='flex-1 min-w-0'>
+                      <div className='flex items-center space-x-2 mb-2 flex-wrap'>
+                        <h3 className='text-base sm:text-lg font-semibold text-blue-950 break-words'>{notification.title}</h3>
                         {notification.published ? (
-                          <span className='px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold'>
+                          <span className='px-3 py-1 bg-green-100 text-green-800 text-xs rounded-full font-semibold whitespace-nowrap'>
                             Published
                           </span>
                         ) : (
-                          <span className='px-3 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-semibold'>
+                          <span className='px-3 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-semibold whitespace-nowrap'>
                             Draft
                           </span>
                         )}
                         {notification.emailSent && (
-                          <span className='px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full'>
+                          <span className='px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full whitespace-nowrap'>
                             Email Sent
                           </span>
                         )}
                       </div>
-                      <p className='text-gray-600 mb-2 whitespace-pre-wrap'>{notification.message}</p>
-                      <div className='text-sm text-gray-400'>
+                      <p className='text-sm sm:text-base text-gray-600 mb-2 whitespace-pre-wrap break-words'>{notification.message}</p>
+                      <div className='text-xs sm:text-sm text-gray-400'>
                         Created: {formatDate(notification.createdAt)}
                         {notification.publishedAt && ` | Published: ${formatDate(notification.publishedAt)}`}
                       </div>
@@ -321,12 +353,12 @@ const PresidentNotifications = () => {
                         Audience: {getAudienceLabel(notification)}
                       </div>
                     </div>
-                    <div className='flex items-center space-x-2 ml-4'>
+                    <div className='flex items-center space-x-2 sm:ml-4 flex-shrink-0'>
                       {!notification.published && (
                         <button
                           onClick={() => handlePublish(notification._id)}
                           disabled={publishingId === notification._id}
-                          className='bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                          className='bg-green-600 hover:bg-green-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] whitespace-nowrap'
                         >
                           {publishingId === notification._id ? 'Publishing...' : 'Publish'}
                         </button>
@@ -334,7 +366,7 @@ const PresidentNotifications = () => {
                       <button
                         onClick={() => handleDelete(notification._id, notification.title)}
                         disabled={deletingId === notification._id}
-                        className='bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                        className='bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] min-w-[44px] flex items-center justify-center'
                         title="Delete notification"
                       >
                         {deletingId === notification._id ? (
@@ -361,8 +393,8 @@ const PresidentNotifications = () => {
 
       
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-blue-950 mb-4">Create Notification</h2>
             
             <form onSubmit={handleSubmit}>

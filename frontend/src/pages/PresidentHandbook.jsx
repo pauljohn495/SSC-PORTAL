@@ -39,6 +39,7 @@ const PresidentHandbook = () => {
   const [editingSectionVersion, setEditingSectionVersion] = useState(1);
   const [sectionHasPriority, setSectionHasPriority] = useState(false);
   const [sectionPriorityError, setSectionPriorityError] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAuthorized = !!user && user.role === 'president';
 
@@ -651,46 +652,77 @@ const PresidentHandbook = () => {
   const isInitialSectionsLoad = sectionsLoading && sidebarSections.length === 0;
 
   return (
-    <div className='bg-white min-h-screen flex'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
       {/* Sidebar Panel */}
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <Link to="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
             </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY  </span> 
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span> 
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/president-handbook" className="block py-2 px-4 bg-blue-800 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
-          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
-          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notifications</Link></li>
-          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/president-handbook" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Calendar</Link></li>
+          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Notifications</Link></li>
+          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
+      {/* Overlay for mobile */}
+      {sidebarOpen && (
+        <div
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 bg-gray-100 p-8">
+      <main className="flex-1 bg-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
           {!isAuthorized ? (
             <div>Access Denied</div>
           ) : (
           <>
-          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8'>
+          <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4 sm:mb-8'>
             <div>
-              <h1 className='text-3xl font-bold text-blue-950'>Handbook Section</h1>
-              <p className='text-sm text-gray-600'>Upload PDF sections for the student handbook. Admin approval is required before students can see them.</p>
+              <h1 className='text-2xl sm:text-3xl font-bold text-blue-950'>Handbook Section</h1>
+              <p className='text-xs sm:text-sm text-gray-600'>Upload PDF sections for the student handbook. Admin approval is required before students can see them.</p>
             </div>
-            <div className='flex items-center flex-wrap gap-3'>
+            <div className='flex items-center flex-wrap gap-2 sm:gap-3'>
               {!checkingDrive && !driveConnected && (
                 <button
                   onClick={connectGoogleDrive}
@@ -813,13 +845,13 @@ const PresidentHandbook = () => {
             </div>
           )}
 
-          <div className='bg-white rounded-lg shadow-md mb-8'>
-            <div className='flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-gray-200'>
+          <div className='bg-white rounded-lg shadow-md mb-4 sm:mb-8 overflow-hidden'>
+            <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-4 sm:px-6 py-4 border-b border-gray-200'>
               <div>
-                <h2 className='text-xl font-bold text-blue-950'>Handbook Section</h2>
-                <p className='text-sm text-gray-500'>Manage the uploaded PDF sections. Each submission must be approved by an admin.</p>
+                <h2 className='text-lg sm:text-xl font-bold text-blue-950'>Handbook Section</h2>
+                <p className='text-xs sm:text-sm text-gray-500'>Manage the uploaded PDF sections. Each submission must be approved by an admin.</p>
               </div>
-              <div className='flex items-center gap-3'>
+              <div className='flex items-center gap-2 sm:gap-3'>
                 {!sectionsLoading && sectionsRefreshing && (
                   <span className='text-xs font-semibold text-gray-400'>Refreshing…</span>
                 )}
@@ -852,14 +884,14 @@ const PresidentHandbook = () => {
                   {sidebarSections.map((section, index) => (
                     <div
                       key={section._id}
-                      className={`flex flex-col md:flex-row md:items-center border-b border-gray-200 px-6 py-4 gap-4 ${
+                      className={`flex flex-col sm:flex-row sm:items-center border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 gap-3 sm:gap-4 ${
                         index === sidebarSections.length - 1 ? 'border-b-0 rounded-b-lg' : ''
                       }`}
                     >
-                      <div className='flex-1'>
+                      <div className='flex-1 min-w-0'>
                         <div className='flex flex-wrap items-center gap-2 mb-1'>
-                          <h3 className='text-lg font-semibold text-gray-800'>{section.title}</h3>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          <h3 className='text-base sm:text-lg font-semibold text-gray-800 break-words'>{section.title}</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
                             section.status === 'approved'
                               ? 'bg-green-100 text-green-700'
                               : section.status === 'rejected'
@@ -870,7 +902,7 @@ const PresidentHandbook = () => {
                           </span>
                         </div>
                         {section.description && (
-                          <p className='text-sm text-gray-600'>{section.description}</p>
+                          <p className='text-xs sm:text-sm text-gray-600 break-words'>{section.description}</p>
                         )}
                         <p className='text-xs text-gray-400 mt-1'>Order: {section.order ?? 0}</p>
                         {section.editedBy && section.editedAt && (
@@ -885,10 +917,10 @@ const PresidentHandbook = () => {
                           <p className='text-xs text-red-600 mt-1'>Rejected by admin. Please upload a revised PDF.</p>
                         )}
                       </div>
-                      <div className='flex items-center gap-2'>
+                      <div className='flex items-center gap-2 flex-shrink-0'>
                         <button
                           onClick={() => openSectionModal(section)}
-                          className='px-4 py-2 text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors'
+                          className='px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors whitespace-nowrap'
                         >
                           Edit
                         </button>
@@ -907,8 +939,8 @@ const PresidentHandbook = () => {
       {/* Modal */}
       {showModal && (
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
-          <div className='bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto'>
-            <h2 className='text-2xl font-bold mb-6 text-blue-950'>
+          <div className='bg-white rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-0'>
+            <h2 className='text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-blue-950'>
               {editingHandbook ? 'Edit Handbook' : 'Create Handbook'}
             </h2>
 
@@ -995,8 +1027,8 @@ const PresidentHandbook = () => {
 
       {sectionModalOpen && (
         <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
-          <div className='bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto'>
-            <h2 className='text-2xl font-bold mb-6 text-blue-950'>
+          <div className='bg-white rounded-lg p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-0'>
+            <h2 className='text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-blue-950'>
               {editingSection ? 'Edit Sidebar Section' : 'Add Sidebar Section'}
             </h2>
             {editingSection && !sectionHasPriority && (

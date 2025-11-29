@@ -53,6 +53,7 @@ const PresidentCalendar = () => {
   const [startDate, setStartDate] = useState(null)
   const [endDate, setEndDate] = useState(null)
   const [error, setError] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     if (!user || user.role !== 'president') {
@@ -299,59 +300,91 @@ const PresidentCalendar = () => {
   const handleLogout = () => { logout(); navigate('/login') }
 
   return (
-    <div className='bg-white min-h-screen flex'>
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Sidebar Panel */}
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <Link to="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
             </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
-          <li><Link to="/president-calendar" className="block py-2 px-4 bg-blue-800 rounded transition">Calendar</Link></li>
-          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notifications</Link></li>
-          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/president-calendar" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Calendar</Link></li>
+          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Notifications</Link></li>
+          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
-      <main className='flex-1 p-8'>
-        <div className='flex justify-between items-center mb-6'>
-          <h1 className='text-2xl font-bold text-blue-950'>Manage Calendar</h1>
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <main className='flex-1 p-4 sm:p-6 md:p-8'>
+        <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 sm:mb-6'>
+          <h1 className='text-xl sm:text-2xl font-bold text-blue-950'>Manage Calendar</h1>
           <button 
             onClick={() => { setLoading(true); fetchEvents(); }} 
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition flex items-center space-x-2"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded transition flex items-center space-x-2 min-h-[44px]"
             title="Refresh page data"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>Refresh</span>
+            <span className='hidden sm:inline'>Refresh</span>
           </button>
         </div>
 
-        <div className='mb-6'>
-          <button onClick={connectGoogle} className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700'>
+        <div className='mb-4 sm:mb-6 flex flex-wrap gap-2'>
+          <button onClick={connectGoogle} className='bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 min-h-[44px]'>
             Connect Google Calendar
           </button>
-          <button onClick={() => { fetchEvents(); fetchArchivedEvents(); }} className='ml-2 bg-gray-200 text-blue-950 px-4 py-2 rounded hover:bg-gray-300'>
+          <button onClick={() => { fetchEvents(); fetchArchivedEvents(); }} className='bg-gray-200 text-blue-950 px-4 py-2 rounded hover:bg-gray-300 min-h-[44px]'>
             Refresh Events
           </button>
         </div>
 
-        <form onSubmit={createEvent} className='mb-8 grid grid-cols-1 gap-4 max-w-xl'>
-          <input className='border p-2 rounded text-black' placeholder='Title' value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} required />
-          <input className='border p-2 rounded text-black' placeholder='Location' value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
+        <form onSubmit={createEvent} className='mb-6 sm:mb-8 grid grid-cols-1 gap-4 max-w-xl'>
+          <input className='border p-2 rounded text-black min-h-[44px]' placeholder='Title' value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} required />
+          <input className='border p-2 rounded text-black min-h-[44px]' placeholder='Location' value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} />
           <textarea className='border p-2 rounded text-black' placeholder='Description' value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
           <div>
             <label className='text-sm text-gray-600 block mb-1'>Start Date & Time</label>
@@ -388,24 +421,24 @@ const PresidentCalendar = () => {
               required
             />
           </div>
-          <button type='submit' className='bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700'>Create Event</button>
+          <button type='submit' className='bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 min-h-[44px]'>Create Event</button>
         </form>
 
         {error && (
           <div className='mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded'>
             {error}
-            <button onClick={() => setError(null)} className='ml-2 text-red-700 hover:text-red-900 font-bold'>×</button>
+            <button onClick={() => setError(null)} className='ml-2 text-red-700 hover:text-red-900 font-bold min-h-[44px] min-w-[44px]'>×</button>
           </div>
         )}
 
-        <div className='border rounded mb-8'>
-          <div className='p-4 border-b font-semibold text-black'>Upcoming Events {loading && '(loading...)'}</div>
+        <div className='border rounded mb-6 sm:mb-8'>
+          <div className='p-3 sm:p-4 border-b font-semibold text-black text-sm sm:text-base'>Upcoming Events {loading && '(loading...)'}</div>
           <ul>
             {events.map(ev => (
-              <li key={ev.id} className='p-4 border-b flex items-center justify-between text-black'>
-                <div className='flex-1'>
-                  <div className='font-medium'>{ev.summary || '(No title)'}</div>
-                  <div className='text-sm text-gray-600'>
+              <li key={ev.id} className='p-3 sm:p-4 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between text-black gap-2'>
+                <div className='flex-1 min-w-0'>
+                  <div className='font-medium break-words'>{ev.summary || '(No title)'}</div>
+                  <div className='text-sm text-gray-600 break-words'>
                     {ev.start?.dateTime ? formatEventDateTime(ev.start.dateTime) : ev.start?.date || ''}
                     {ev.start?.dateTime && ev.end?.dateTime && ' — '}
                     {ev.end?.dateTime ? formatEventDateTime(ev.end.dateTime) : ev.end?.date || ''}
@@ -414,7 +447,7 @@ const PresidentCalendar = () => {
                 <div>
                   <button
                     onClick={() => handleArchiveClick(ev.id, ev.summary)}
-                    className='px-3 py-1 rounded bg-orange-600 text-white hover:bg-orange-700'
+                    className='px-3 py-1.5 rounded bg-orange-600 text-white hover:bg-orange-700 min-h-[44px] whitespace-nowrap'
                   >
                     Archive
                   </button>
@@ -428,13 +461,13 @@ const PresidentCalendar = () => {
         </div>
 
         <div className='border rounded'>
-          <div className='p-4 border-b font-semibold text-black'>Archived Events</div>
+          <div className='p-3 sm:p-4 border-b font-semibold text-black text-sm sm:text-base'>Archived Events</div>
           <ul>
             {archivedEvents.map(ev => (
-              <li key={ev._id} className='p-4 border-b flex items-center justify-between text-black'>
-                <div className='flex-1'>
-                  <div className='font-medium'>{ev.summary || '(No title)'}</div>
-                  <div className='text-sm text-gray-600'>
+              <li key={ev._id} className='p-3 sm:p-4 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between text-black gap-2'>
+                <div className='flex-1 min-w-0'>
+                  <div className='font-medium break-words'>{ev.summary || '(No title)'}</div>
+                  <div className='text-sm text-gray-600 break-words'>
                     {ev.start ? formatEventDateTime(ev.start) : ''}
                     {ev.start && ev.end && ' — '}
                     {ev.end ? formatEventDateTime(ev.end) : ''}
@@ -446,13 +479,13 @@ const PresidentCalendar = () => {
                 <div className='flex space-x-2'>
                   <button
                     onClick={() => handleRestoreClick(ev.googleEventId, ev.summary)}
-                    className='px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700'
+                    className='px-3 py-1.5 rounded bg-green-600 text-white hover:bg-green-700 min-h-[44px] whitespace-nowrap'
                   >
                     Restore
                   </button>
                   <button
                     onClick={() => handleDeleteClick(ev.googleEventId, ev.summary)}
-                    className='px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700'
+                    className='px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 min-h-[44px] whitespace-nowrap'
                   >
                     Delete
                   </button>

@@ -15,6 +15,7 @@ const PresidentPolicy = () => {
   const [sectionFile, setSectionFile] = useState(null)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const isAuthorized = useMemo(() => user?.role === 'president', [user?.role])
 
@@ -144,49 +145,81 @@ const PresidentPolicy = () => {
   }
 
   return (
-    <div className='bg-white min-h-screen flex'>
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
+      {/* Sidebar Panel */}
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <Link to="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
             </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/president-policy" className="block py-2 px-4 bg-blue-800 rounded transition">Policy</Link></li>
-          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Calendar</Link></li>
-          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Notifications</Link></li>
-          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/president-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/president-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/president-policy" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/president-calendar" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Calendar</Link></li>
+          <li><Link to="/president-notifications" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Notifications</Link></li>
+          <li><Link to="/president-activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
-      <main className="flex-1 bg-gray-100 p-8">
-        <div className='max-w-6xl mx-auto space-y-6'>
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <main className="flex-1 bg-gray-100 p-4 sm:p-6 md:p-8">
+        <div className='max-w-6xl mx-auto space-y-4 sm:space-y-6'>
           <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-3'>
             <div>
-              <h1 className='text-3xl font-bold text-blue-950'>Policy Management</h1>
-              <p className='text-gray-600'>Organize Colleges and course-specific policies.</p>
+              <h1 className='text-2xl sm:text-3xl font-bold text-blue-950'>Policy Management</h1>
+              <p className='text-sm sm:text-base text-gray-600'>Organize Colleges and course-specific policies.</p>
             </div>
             <div className='flex flex-wrap gap-2'>
               <button
                 onClick={() => setDeptModalOpen(true)}
-                className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold'
+                className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold min-h-[44px]'
               >
                 Create College
               </button>
               <button
                 onClick={() => setSectionModalOpen(true)}
-                className='px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition text-sm font-semibold'
+                className='px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition text-sm font-semibold min-h-[44px]'
               >
                 Create Section
               </button>
@@ -250,8 +283,8 @@ const PresidentPolicy = () => {
       </main>
 
       {deptModalOpen && (
-        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
-          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
+        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
+          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto'>
             <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create College</h3>
             <form className='space-y-4' onSubmit={submitDepartment}>
               <div>
@@ -293,8 +326,8 @@ const PresidentPolicy = () => {
       )}
 
       {sectionModalOpen && (
-        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
-          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-6'>
+        <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
+          <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto'>
             <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create Section</h3>
             <form className='space-y-4' onSubmit={submitSection}>
               <div>

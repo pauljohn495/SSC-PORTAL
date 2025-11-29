@@ -7,6 +7,7 @@ const ActivityLogs = () => {
   const navigate = useNavigate();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAuthorized = !!user && user.role === 'admin';
 
@@ -87,50 +88,81 @@ const ActivityLogs = () => {
   };
 
   return (
-    <div className='bg-white min-h-screen flex'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
       {/* Sidebar Panel */}
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <a href="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
-            </a>
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
+            </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/admin-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/admin-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
-          <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Memorandum</Link></li>
-          <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Manage User</Link></li>
-          <li><Link to="/activity-logs" className="block py-2 px-4 bg-blue-800 rounded transition">Activity Logs</Link></li>
-          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Archived</Link></li>
-          <li><Link to="/admin-backup" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Backup</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/admin-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/admin-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/admin-memorandum" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Manage User</Link></li>
+          <li><Link to="/activity-logs" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Archived</Link></li>
+          <li><Link to="/admin-backup" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Backup</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 bg-gray-100 p-8">
+      <main className="flex-1 bg-gray-100 p-4 sm:p-6 md:p-8">
         <div className="max-w-6xl mx-auto">
           {!isAuthorized ? (
             <div>Access Denied</div>
           ) : (
-          <div className='flex justify-between items-center mb-8'>
-            <h1 className='text-3xl font-bold text-blue-950'>Activity Logs</h1>
+          <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8'>
+            <h1 className='text-2xl sm:text-3xl font-bold text-blue-950'>Activity Logs</h1>
             <button
               onClick={fetchLogs}
-              className='bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center space-x-2'
+              className='bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition-colors flex items-center space-x-2 min-h-[44px]'
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>Refresh</span>
+              <span className='hidden sm:inline'>Refresh</span>
             </button>
           </div>
           )}
@@ -140,15 +172,15 @@ const ActivityLogs = () => {
               <p className='text-gray-500'>Loading activity logs...</p>
             </div>
           ) : (
-            <div className='bg-white rounded-lg shadow-md'>
+            <div className='bg-white rounded-lg shadow-md overflow-x-auto'>
               {logs.length > 0 ? (
                 <div>
                   {/* Header */}
-                  <div className='flex items-center border-b border-gray-200 bg-gray-50 rounded-t-lg px-6 py-3'>
-                    <div className='flex-1 font-semibold text-gray-700'>Activity</div>
-                    <div className='w-32 font-semibold text-gray-700'>User</div>
-                    <div className='w-32 font-semibold text-gray-700'>Time Ago</div>
-                    <div className='w-48 font-semibold text-gray-700'>Date</div>
+                  <div className='hidden md:flex items-center border-b border-gray-200 bg-gray-50 rounded-t-lg px-4 sm:px-6 py-3'>
+                    <div className='flex-1 font-semibold text-gray-700 text-sm sm:text-base'>Activity</div>
+                    <div className='w-32 font-semibold text-gray-700 text-sm sm:text-base'>User</div>
+                    <div className='w-32 font-semibold text-gray-700 text-sm sm:text-base'>Time Ago</div>
+                    <div className='w-48 font-semibold text-gray-700 text-sm sm:text-base'>Date</div>
                   </div>
                   
                   {logs.map((log, index) => {
@@ -158,27 +190,27 @@ const ActivityLogs = () => {
                     const userRole = log.user ? log.user.role : 'system';
                     
                     return (
-                      <div key={log._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
-                        <div className='flex-1 px-6 py-4'>
+                      <div key={log._id} className={`flex flex-col md:flex-row items-start md:items-center border-b border-gray-200 hover:bg-gray-50 gap-2 ${index === logs.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-4 sm:px-6 py-3 sm:py-4 min-w-0'>
                           <div className='flex items-center space-x-3'>
-                            <div>
-                              <div className='flex items-center space-x-2'>
+                            <div className='min-w-0 flex-1'>
+                              <div className='flex items-center space-x-2 flex-wrap'>
                                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getActionBadgeColor(log.action)}`}>
                                   {log.action.replace('_', ' ').toUpperCase()}
                                 </span>
                               </div>
-                              <p className='text-gray-800 font-medium mt-1'>{log.description}</p>
+                              <p className='text-gray-800 font-medium mt-1 break-words'>{log.description}</p>
                             </div>
                           </div>
                         </div>
-                        <div className='w-32 px-6 py-4'>
+                        <div className='w-full md:w-32 px-4 sm:px-6 py-2 sm:py-4'>
                           <div className='text-sm'>
-                            <p className='font-medium text-gray-800'>{log.user ? log.user.name : 'System'}</p>
+                            <p className='font-medium text-gray-800 break-words'>{log.user ? log.user.name : 'System'}</p>
                             <p className='text-xs text-gray-500'>{userRole}</p>
                           </div>
                         </div>
-                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
-                        <div className='w-48 px-6 py-4 text-sm text-gray-600'>{formattedDate}</div>
+                        <div className='w-full md:w-32 px-4 sm:px-6 py-2 sm:py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-full md:w-48 px-4 sm:px-6 py-2 sm:py-4 text-sm text-gray-600'>{formattedDate}</div>
                       </div>
                     );
                   })}

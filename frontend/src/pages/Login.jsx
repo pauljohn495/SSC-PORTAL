@@ -283,20 +283,20 @@ const handleForgotPassword = async (e) => {
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 px-6 py-12">
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 px-4 sm:px-6 py-8 sm:py-12">
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
-          <div className="lg:hidden flex justify-center mb-8">
+          <div className="lg:hidden flex justify-center mb-6 sm:mb-8">
             <img
               src={buksunew}
               alt="BUKSU Logo"
-              className="w-48 h-auto"
+              className="w-40 sm:w-48 h-auto"
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg p-8">
-            <h2 className="text-3xl font-bold text-blue-950 mb-2 text-center">Login</h2>
-            <p className="text-gray-600 text-center mb-8">Sign in to your account</p>
+          <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
+            <h2 className="text-2xl sm:text-3xl font-bold text-blue-950 mb-2 text-center">Login</h2>
+            <p className="text-sm sm:text-base text-gray-600 text-center mb-6 sm:mb-8">Sign in to your account</p>
 
             {/* Google Login */}
             <div className="mb-6">

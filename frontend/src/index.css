@@ -66,3 +66,34 @@
   background-color: #1e3a8a !important;
   color: white !important;
 }
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+  /* Ensure modals are full width on mobile */
+  .modal-box {
+    width: calc(100% - 2rem);
+    max-width: calc(100% - 2rem);
+    margin: 1rem;
+  }
+  
+  /* Make tables scrollable on mobile */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Prevent text overflow on small screens */
+  .text-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Ensure buttons are touch-friendly on mobile */
+@media (max-width: 768px) {
+  button, a.btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

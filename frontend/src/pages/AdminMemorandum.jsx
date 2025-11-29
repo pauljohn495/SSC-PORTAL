@@ -9,6 +9,7 @@ const AdminMemorandum = () => {
   const [drafts, setDrafts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [archivingId, setArchivingId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isAuthorized = !!user && user.role === 'admin';
 
@@ -197,41 +198,72 @@ const AdminMemorandum = () => {
   };
 
   return (
-    <div className='bg-white min-h-screen flex'>
+    <div className='bg-white min-h-screen flex flex-col lg:flex-row'>
+      {/* Mobile Header */}
+      <div className='lg:hidden bg-blue-950 text-white p-4 flex justify-between items-center'>
+        <div className='flex items-center space-x-2'>
+          <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-12 h-auto' />
+          <span className='text-sm font-bold'>BUKSU SSC</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className='text-white p-2 hover:bg-blue-900 rounded'
+          aria-label="Toggle menu"
+        >
+          <svg className='w-6 h-6' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+            {sidebarOpen ? (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
+            ) : (
+              <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 6h16M4 12h16M4 18h16' />
+            )}
+          </svg>
+        </button>
+      </div>
+
       {/* Sidebar Panel */}
-      <aside className='bg-blue-950 text-white w-64 min-h-screen p-4'>
+      <aside className={`bg-blue-950 text-white w-64 min-h-screen p-4 fixed lg:static inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      }`}>
         <div className='mb-8'>
           <div className='flex items-center justify-center space-x-4 mb-4'>
-            <Link to="/" className='flex items-center space-x-4'>
-              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-20 h-auto' />
-              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-20 h-auto' />
+            <Link to="/" className='flex items-center space-x-4' onClick={() => setSidebarOpen(false)}>
+              <img src="/src/assets/buksu-white.png" alt="BUKSU White Logo" className='w-16 sm:w-20 h-auto' />
+              <img src="/src/assets/ssc-logo.png" alt="SSC Logo" className='w-16 sm:w-20 h-auto hidden sm:block' />
             </Link>
           </div>
           <div className='text-center'>
-            <span className='text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
+            <span className='text-xs sm:text-sm font-bold leading-none'>BUKIDNON STATE UNIVERSITY</span>
             <br />
             <span className='text-xs font-semibold leading-none'>SUPREME STUDENT COUNCIL</span>
           </div>
         </div>
         <ul className='space-y-4'>
-          <li><Link to="/admin-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Handbook</Link></li>
-          <li><Link to="/admin-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Policy</Link></li>
-          <li><Link to="/admin-memorandum" className="block py-2 px-4 bg-blue-800 rounded transition">Memorandum</Link></li>
-          <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Manage User</Link></li>
-          <li><Link to="/activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Activity Logs</Link></li>
-          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Archived</Link></li>
-          <li><Link to="/admin-backup" className="block py-2 px-4 hover:bg-blue-900 rounded transition">Backup</Link></li>
-          <li><button onClick={handleLogout} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
+          <li><Link to="/admin-handbook" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Handbook</Link></li>
+          <li><Link to="/admin-policy" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Policy</Link></li>
+          <li><Link to="/admin-memorandum" className="block py-2 px-4 bg-blue-800 rounded transition" onClick={() => setSidebarOpen(false)}>Memorandum</Link></li>
+          <li><Link to="/manage-users" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Manage User</Link></li>
+          <li><Link to="/activity-logs" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Activity Logs</Link></li>
+          <li><Link to="/archived" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Archived</Link></li>
+          <li><Link to="/admin-backup" className="block py-2 px-4 hover:bg-blue-900 rounded transition" onClick={() => setSidebarOpen(false)}>Backup</Link></li>
+          <li><button onClick={() => { handleLogout(); setSidebarOpen(false); }} className="block py-2 px-4 hover:bg-blue-900 rounded transition text-left w-full">Logout</button></li>
         </ul>
       </aside>
 
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className='fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden'
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <main className="flex-1 bg-gray-100 p-8">
+      <main className="flex-1 bg-gray-100 p-4 sm:p-6 md:p-8">
         <div className="max-w-6xl mx-auto">
           {!isAuthorized ? (
             <div>Access Denied</div>
           ) : (
-          <h1 className='text-3xl font-bold mb-8 text-blue-950'>Memorandum Drafts</h1>
+          <h1 className='text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-blue-950'>Memorandum Drafts</h1>
           )}
           
           {isAuthorized && (loading ? (
@@ -249,23 +281,23 @@ const AdminMemorandum = () => {
                     const timeAgo = getTimeAgo(draft.uploadedAt);
                     
                     return (
-                      <div key={draft._id} className={`flex items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === drafts.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
-                        <div className='flex-1 px-6 py-4'>
-                          <p className='text-gray-800 font-medium'>{draft.title}</p>
+                      <div key={draft._id} className={`flex flex-col sm:flex-row items-start sm:items-center border-b border-gray-200 hover:bg-gray-50 ${index === 0 ? 'rounded-t-lg' : ''} ${index === drafts.length - 1 ? 'rounded-b-lg border-b-0' : ''}`}>
+                        <div className='flex-1 px-4 sm:px-6 py-4 min-w-0'>
+                          <p className='text-gray-800 font-medium break-words'>{draft.title}</p>
                         </div>
-                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{timeAgo}</div>
-                        <div className='w-32 px-6 py-4 text-sm text-gray-600'>{uploadedAt}</div>
-                        <div className='w-32 px-6 py-4'>
+                        <div className='w-full sm:w-32 px-4 sm:px-6 py-2 sm:py-4 text-sm text-gray-600'>{timeAgo}</div>
+                        <div className='w-full sm:w-32 px-4 sm:px-6 py-2 sm:py-4 text-sm text-gray-600'>{uploadedAt}</div>
+                        <div className='w-full sm:w-32 px-4 sm:px-6 py-2 sm:py-4'>
                           <span className={`font-semibold ${draft.status === 'approved' ? 'text-green-600' : draft.status === 'rejected' ? 'text-red-600' : 'text-yellow-600'}`}>
                             {draft.status}
                           </span>
                         </div>
-                        <div className='w-32 px-6 py-4 flex items-center justify-end space-x-2'>
+                        <div className='w-full sm:w-32 px-4 sm:px-6 py-2 sm:py-4 flex items-center justify-start sm:justify-end space-x-2 flex-wrap'>
                           {draft.status === 'draft' && (
                             <>
                               <button
                                 onClick={() => handleViewPDF(draft.fileUrl)}
-                                className='text-blue-600 hover:text-blue-800 transition-colors'
+                                className='text-blue-600 hover:text-blue-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center'
                                 title='View PDF'
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -275,7 +307,7 @@ const AdminMemorandum = () => {
                               </button>
                               <button
                                 onClick={() => handleApprove(draft._id)}
-                                className='text-green-600 hover:text-green-800 transition-colors'
+                                className='text-green-600 hover:text-green-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center'
                                 title='Approve'
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -284,7 +316,7 @@ const AdminMemorandum = () => {
                               </button>
                               <button
                                 onClick={() => handleReject(draft._id)}
-                                className='text-red-600 hover:text-red-800 transition-colors'
+                                className='text-red-600 hover:text-red-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center'
                                 title='Reject'
                               >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -296,7 +328,7 @@ const AdminMemorandum = () => {
                           <button
                             onClick={() => handleArchive(draft._id)}
                             disabled={archivingId === draft._id}
-                            className='text-gray-400 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                            className='text-gray-400 hover:text-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] min-w-[44px] flex items-center justify-center'
                             title='Archive'
                           >
                             <svg className='h-5 w-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
