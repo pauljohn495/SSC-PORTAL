@@ -23,11 +23,38 @@ export const splitPDFIntoPages = async (base64Data, fileName) => {
       base64Content = base64Data.split(',')[1];
     }
 
-    // Convert base64 to buffer
-    const pdfBuffer = Buffer.from(base64Content, 'base64');
+    // Remove any whitespace that might cause issues
+    base64Content = base64Content.trim().replace(/\s/g, '');
+
+    // Convert base64 to buffer with validation
+    let pdfBuffer;
+    try {
+      pdfBuffer = Buffer.from(base64Content, 'base64');
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('Failed to create buffer from base64 data');
+      }
+    } catch (bufferError) {
+      console.error('Error converting base64 to buffer:', bufferError);
+      throw new Error(`Failed to process PDF file: ${bufferError.message}`);
+    }
+    
+    // Check file size before processing (limit to 80MB to avoid offset errors)
+    const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+    if (bufferSizeMB > 80) {
+      throw new Error(`PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit. Please use a smaller file to avoid offset errors.`);
+    }
     
     // Load the PDF document
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    let pdfDoc;
+    try {
+      pdfDoc = await PDFDocument.load(pdfBuffer);
+    } catch (loadError) {
+      // Handle offset errors specifically for large files
+      if (loadError.message && loadError.message.includes('offset')) {
+        throw new Error('PDF file is too large or corrupted. Please try a smaller file or re-export the PDF.');
+      }
+      throw loadError;
+    }
     const totalPages = pdfDoc.getPageCount();
     
     console.log(`Splitting PDF into ${totalPages} pages...`);
@@ -40,8 +67,17 @@ export const splitPDFIntoPages = async (base64Data, fileName) => {
     for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
       // Create a new PDF document with just this page
       const newPdfDoc = await PDFDocument.create();
-      const [copiedPage] = await newPdfDoc.copyPages(pdfDoc, [pageIndex]);
-      newPdfDoc.addPage(copiedPage);
+      try {
+        const [copiedPage] = await newPdfDoc.copyPages(pdfDoc, [pageIndex]);
+        newPdfDoc.addPage(copiedPage);
+      } catch (copyError) {
+        // Handle offset errors when copying pages
+        if (copyError.message && copyError.message.includes('offset')) {
+          console.error(`Offset error when copying page ${pageIndex + 1}. Stopping page extraction.`);
+          break; // Stop processing remaining pages
+        }
+        throw copyError;
+      }
       
       // Save the single-page PDF
       const pdfBytes = await newPdfDoc.save();

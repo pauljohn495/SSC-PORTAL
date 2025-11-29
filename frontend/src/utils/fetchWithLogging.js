@@ -14,6 +14,17 @@ export const logApiResponse = (response) => {
   if (apiLogHeader) {
     try {
       const logData = JSON.parse(apiLogHeader);
+      
+      // Skip logging for president handbook endpoints
+      if (logData.endpoint && (
+        logData.endpoint.includes('/president/handbook') || 
+        logData.endpoint.includes('/president/handbook-sections') ||
+        logData.endpoint.includes('/president/drive/status') ||
+        logData.endpoint.includes('/admin/handbook')
+      )) {
+        return;
+      }
+      
       console.log('[API Log]', JSON.stringify(logData, null, 2));
     } catch (e) {
       // Ignore parsing errors
@@ -29,6 +40,18 @@ export const installGlobalApiLogger = () => {
   originalFetch = window.fetch.bind(window);
   window.fetch = async (...args) => {
     const response = await originalFetch(...args);
+    
+    // Skip logging for president handbook related endpoints
+    const url = args[0];
+    if (typeof url === 'string' && (
+      url.includes('/president/handbook') ||
+      url.includes('/president/handbook-sections') ||
+      url.includes('/president/drive/status') ||
+      url.includes('/admin/handbook')
+    )) {
+      return response;
+    }
+    
     logApiResponse(response);
     return response;
   };

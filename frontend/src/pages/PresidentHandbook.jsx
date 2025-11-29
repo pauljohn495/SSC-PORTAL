@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logApiResponse } from '../utils/fetchWithLogging';
 import Swal from 'sweetalert2';
 
 const PresidentHandbook = () => {
@@ -129,7 +128,6 @@ const PresidentHandbook = () => {
     if (!user?._id) return;
     try {
       const res = await fetch(`/api/president/drive/auth-url?userId=${user._id}`);
-      logApiResponse(res);
       if (res.ok) {
         const { url } = await res.json();
         const popup = window.open(url, '_blank', 'width=500,height=700');
@@ -434,7 +432,6 @@ const PresidentHandbook = () => {
             })
           });
 
-          logApiResponse(response);
           const data = await response.json();
           
           if (response.ok) {
@@ -481,7 +478,6 @@ const PresidentHandbook = () => {
         body: JSON.stringify({ userId: user._id })
       });
 
-      logApiResponse(priorityResponse);
       const priorityData = await priorityResponse.json();
 
       if (priorityData.hasPriority) {
@@ -556,7 +552,6 @@ const PresidentHandbook = () => {
             })
           });
 
-          logApiResponse(response);
           const data = await response.json();
           
           if (response.ok) {
@@ -604,7 +599,6 @@ const PresidentHandbook = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user._id })
         });
-        logApiResponse(clearResponse);
       } catch (error) {
         console.error('Error clearing priority:', error);
       }

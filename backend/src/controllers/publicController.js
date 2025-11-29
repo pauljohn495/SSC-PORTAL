@@ -115,11 +115,20 @@ export const getPublicNotifications = async (req, res, next) => {
 // Get published handbook sidebar sections
 export const getPublicHandbookSections = async (req, res, next) => {
   try {
-    await logActivity('anonymous', 'VIEW_HANDBOOK_SECTIONS', 'Viewed all published handbook sections', null, req);
-    const sections = await HandbookSection.find({ published: true, status: 'approved' })
-      .sort({ order: 1, createdAt: 1 });
+    // Exclude large fields for faster response
+    const sections = await HandbookSection.find(
+      { published: true, status: 'approved', archived: { $ne: true } },
+      { fileUrl: 0, pdfContent: 0 } // Exclude large fields
+    )
+      .sort({ order: 1, createdAt: 1 })
+      .lean(); // Use lean() for faster queries
+    
     logPublicApi(req, res, '/api/handbook-sections', 200, 'Fetched published handbook sections', { count: sections.length });
-    return res.json(sections);
+    res.json(sections);
+    
+    // Log activity in background (non-blocking)
+    logActivity('anonymous', 'VIEW_HANDBOOK_SECTIONS', 'Viewed all published handbook sections', null, req)
+      .catch(err => console.error('Background activity log failed:', err));
   } catch (error) {
     logPublicApi(req, res, '/api/handbook-sections', 500, 'Failed to fetch handbook sections');
     next(error);

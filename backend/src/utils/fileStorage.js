@@ -37,6 +37,9 @@ export const savePDFToFile = (base64Data, fileName, subdirectory = 'handbooks') 
       base64Content = base64Data.split(',')[1];
     }
 
+    // Remove any whitespace that might cause issues
+    base64Content = base64Content.trim().replace(/\s/g, '');
+
     // Generate unique filename
     const timestamp = Date.now();
     const sanitizedFileName = (fileName || 'document.pdf').replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -44,8 +47,18 @@ export const savePDFToFile = (base64Data, fileName, subdirectory = 'handbooks') 
     const targetDir = resolveSubdirectory(subdirectory);
     const filePath = path.join(targetDir, uniqueFileName);
 
-    // Convert base64 to buffer and write to file
-    const buffer = Buffer.from(base64Content, 'base64');
+    // Convert base64 to buffer and write to file with validation
+    let buffer;
+    try {
+      buffer = Buffer.from(base64Content, 'base64');
+      if (!buffer || buffer.length === 0) {
+        throw new Error('Failed to create buffer from base64 data');
+      }
+    } catch (bufferError) {
+      console.error('Error converting base64 to buffer:', bufferError);
+      throw new Error('Failed to process PDF file. Invalid file format.');
+    }
+    
     fs.writeFileSync(filePath, buffer);
 
     // Return relative path for storage in database

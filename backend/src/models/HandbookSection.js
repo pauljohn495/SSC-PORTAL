@@ -26,6 +26,12 @@ const handbookSectionSchema = new mongoose.Schema({
   editedAt: { type: Date },
 }, { timestamps: true });
 
+// Add indexes for frequently queried fields
+handbookSectionSchema.index({ published: 1, status: 1, archived: 1 });
+handbookSectionSchema.index({ archived: 1, status: 1 });
+handbookSectionSchema.index({ order: 1, createdAt: 1 });
+handbookSectionSchema.index({ createdAt: -1 });
+
 const HandbookSection = mongoose.model('HandbookSection', handbookSectionSchema);
 
 export default HandbookSection;

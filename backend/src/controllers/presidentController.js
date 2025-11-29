@@ -15,6 +15,15 @@ import { getDepartments } from '../data/departments.js';
 
 // Helper function to create simplified log and set response header
 const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
+  // Skip logging for president handbook endpoints and drive status
+  if (endpoint && (
+    endpoint.includes('/president/handbook') || 
+    endpoint.includes('/president/handbook-sections') ||
+    endpoint.includes('/president/drive/status')
+  )) {
+    return null;
+  }
+  
   // Extract content from various response structures
   let content = null;
   if (responseData?.content) {
@@ -51,7 +60,7 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
     content
   };
   
- 
+
   try {
     // Safely stringify, handling circular references and other edge cases
     let headerValue;
@@ -295,10 +304,46 @@ export const uploadMemorandum = async (req, res, next) => {
       return res.status(403).json(response);
     }
 
-    // Extract text from PDF
+    // Upload PDF to Google Drive
+    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+    const { config } = await import('../config/index.js');
+    
+    let base64Content = fileUrl;
+    if (fileUrl.includes(',')) {
+      base64Content = fileUrl.split(',')[1];
+    }
+    base64Content = base64Content.trim().replace(/\s/g, '');
+    
+    let pdfBuffer;
+    try {
+      pdfBuffer = Buffer.from(base64Content, 'base64');
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('Failed to create buffer from base64 data');
+      }
+    } catch (bufferError) {
+      console.error('Error converting base64 to buffer:', bufferError);
+      const response = { message: 'Failed to process PDF file. Invalid file format.' };
+      return res.status(400).json(response);
+    }
+    
+    // Check file size before uploading (limit to 80MB)
+    const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+    if (bufferSizeMB > 80) {
+      const response = { message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` };
+      return res.status(400).json(response);
+    }
+    
+    // Upload to Google Drive
+    const sanitizedFileName = (fileName || `${title}_${year}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+    const driveFolderId = config.google.driveFolderId || null;
+    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    
+    // Extract text content for search indexing
     let pdfContent = '';
     try {
-      pdfContent = await extractTextFromPDF(fileUrl);
+      if (bufferSizeMB <= 80) {
+        pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+      }
     } catch (error) {
       console.error('Failed to extract PDF text:', error);
       // Continue even if extraction fails
@@ -307,8 +352,8 @@ export const uploadMemorandum = async (req, res, next) => {
     const memorandum = new Memorandum({ 
       title, 
       year, 
-      fileUrl, 
-      fileName: fileName || '', 
+      fileUrl: driveResult.previewUrl, // Store Google Drive preview URL
+      fileName: sanitizedFileName, 
       pdfContent,
       createdBy: userId 
     });
@@ -439,18 +484,75 @@ export const updateMemorandum = async (req, res, next) => {
     const oldFileUrl = memorandum.fileUrl;
     memorandum.title = title;
     memorandum.year = year;
-    memorandum.fileUrl = fileUrl;
-    if (fileName !== undefined) {
-      memorandum.fileName = fileName || '';
-    }
     
-    // Extract text from PDF if a new file was uploaded
-    if (fileUrl && fileUrl !== oldFileUrl) {
+    // Check if it's a new file (base64) or existing Google Drive URL
+    const isBase64 = fileUrl && (fileUrl.startsWith('data:') || (!fileUrl.startsWith('http') && !fileUrl.startsWith('uploads/')));
+    
+    if (isBase64 && fileUrl !== oldFileUrl) {
+      // New file upload - upload to Google Drive
+      const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+      const { config } = await import('../config/index.js');
+      
+      let base64Data = fileUrl;
+      if (fileUrl.includes(',')) {
+        base64Data = fileUrl.split(',')[1];
+      }
+      base64Data = base64Data.trim().replace(/\s/g, '');
+      
+      let pdfBuffer;
       try {
-        memorandum.pdfContent = await extractTextFromPDF(fileUrl);
+        pdfBuffer = Buffer.from(base64Data, 'base64');
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+          throw new Error('Failed to create buffer from base64 data');
+        }
+      } catch (bufferError) {
+        console.error('Error converting base64 to buffer:', bufferError);
+        const response = { message: 'Failed to process PDF file. Invalid file format.' };
+        return res.status(400).json(response);
+      }
+      
+      // Check file size before uploading (limit to 80MB)
+      const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+      if (bufferSizeMB > 80) {
+        const response = { message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` };
+        return res.status(400).json(response);
+      }
+      
+      // Delete old file from Google Drive if it exists (extract fileId from old URL)
+      // Old URL format: https://drive.google.com/file/d/FILE_ID/preview
+      if (oldFileUrl && oldFileUrl.includes('drive.google.com')) {
+        const fileIdMatch = oldFileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (fileIdMatch && fileIdMatch[1]) {
+          try {
+            await deleteFileFromDrive(fileIdMatch[1], userId);
+          } catch (error) {
+            console.warn('Failed to delete old Google Drive file:', error.message);
+          }
+        }
+      }
+      
+      // Upload new file to Google Drive
+      const sanitizedFileName = (fileName || `${title}_${year}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+      const driveFolderId = config.google.driveFolderId || null;
+      const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+      
+      memorandum.fileUrl = driveResult.previewUrl;
+      memorandum.fileName = sanitizedFileName;
+      
+      // Extract text from PDF
+      try {
+        if (bufferSizeMB <= 80) {
+          memorandum.pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+        }
       } catch (error) {
         console.error('Failed to extract PDF text:', error);
         // Keep existing content if extraction fails
+      }
+    } else if (fileUrl) {
+      // Existing Google Drive URL - just update if different
+      memorandum.fileUrl = fileUrl;
+      if (fileName !== undefined) {
+        memorandum.fileName = fileName || '';
       }
     }
     
@@ -576,7 +678,6 @@ export const createHandbook = async (req, res, next) => {
             const { deletePDFFile } = await import('../utils/fileStorage.js');
             deletePDFFile(oldHandbook.fileUrl);
           } catch (error) {
-            // Log but continue - file might not exist
             console.warn(`Could not delete file system file ${oldHandbook.fileUrl}:`, error.message);
           }
         }
@@ -585,12 +686,36 @@ export const createHandbook = async (req, res, next) => {
       await Handbook.deleteMany({ status: 'approved' });
     }
 
-    // Convert base64 to buffer
+    // Convert base64 to buffer with proper validation
     let base64Content = fileUrl;
     if (fileUrl.includes(',')) {
       base64Content = fileUrl.split(',')[1];
     }
-    const pdfBuffer = Buffer.from(base64Content, 'base64');
+    
+    // Remove any whitespace that might cause issues
+    base64Content = base64Content.trim().replace(/\s/g, '');
+    
+    let pdfBuffer;
+    try {
+      pdfBuffer = Buffer.from(base64Content, 'base64');
+      
+      // Validate buffer was created correctly
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        const response = { message: 'Failed to process PDF file. The file may be corrupted.' };
+        return res.status(400).json(response);
+      }
+    } catch (bufferError) {
+      console.error('Error converting base64 to buffer:', bufferError);
+      const response = { message: 'Failed to process PDF file. Invalid file format.' };
+      return res.status(400).json(response);
+    }
+
+    // Check file size before uploading (limit to 80MB)
+    const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+    if (bufferSizeMB > 80) {
+      const response = { message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` };
+      return res.status(400).json(response);
+    }
 
     // Upload whole PDF to Google Drive
     const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
@@ -603,8 +728,21 @@ export const createHandbook = async (req, res, next) => {
     const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
     
     // Extract text content from PDF for search indexing
+    // For large files, this may fail, so we make it optional
     console.log('Extracting text from PDF for search...');
-    const pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+    let pdfContent = '';
+    try {
+      if (bufferSizeMB <= 80) {
+        pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+        if (pdfContent) {
+          console.log(`Extracted ${pdfContent.length} characters from PDF`);
+        }
+      }
+    } catch (extractError) {
+      console.warn('Failed to extract text from PDF (file may be too large). Continuing without text extraction:', extractError.message);
+      // Continue without text extraction - the file will still be uploaded
+      pdfContent = '';
+    }
     
     // Create single Handbook entry for the whole PDF
     const handbook = new Handbook({
@@ -814,14 +952,18 @@ export const clearHandbookPriority = async (req, res, next) => {
 
 export const getHandbookSections = async (req, res, next) => {
   try {
-    const sections = await HandbookSection.find()
+    // Exclude large fields and use lean() for faster queries
+    const sections = await HandbookSection.find(
+      { archived: { $ne: true } },
+      { fileUrl: 0, pdfContent: 0 } // Exclude large fields
+    )
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
       .populate('editedBy', 'name email')
-      .sort({ order: 1, createdAt: 1 });
-    const response = sections;
-    logAndSetHeader(req, res, 'GET', '/api/president/handbook-sections', 200, { sections, count: sections.length });
-    res.json(response);
+      .sort({ order: 1, createdAt: 1 })
+      .lean();
+    
+    res.json(sections);
   } catch (error) {
     next(error);
   }
@@ -864,11 +1006,49 @@ export const createHandbookSection = async (req, res, next) => {
     if (fileUrl.includes(',')) {
       base64Content = fileUrl.split(',')[1];
     }
-    const pdfBuffer = Buffer.from(base64Content, 'base64');
+    
+    // Remove any whitespace that might cause issues
+    base64Content = base64Content.trim().replace(/\s/g, '');
+    
+    let pdfBuffer;
+    try {
+      pdfBuffer = Buffer.from(base64Content, 'base64');
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('Failed to create buffer from base64 data');
+      }
+    } catch (bufferError) {
+      console.error('Error converting base64 to buffer:', bufferError);
+      const response = { message: 'Failed to process PDF file. Invalid file format.' };
+      return res.status(400).json(response);
+    }
 
-    const { extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+    // Check file size before uploading (limit to 80MB)
+    const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+    if (bufferSizeMB > 80) {
+      const response = { message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` };
+      return res.status(400).json(response);
+    }
+    
+    // Upload to Google Drive
+    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+    const { config } = await import('../config/index.js');
     const sanitizedFileName = (fileName || `${slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+    const driveFolderId = config.google.driveFolderId || null;
+    
+    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    
+    // Extract text content - make it optional for large files
+    let pdfContent = '';
+    try {
+      if (bufferSizeMB <= 80) {
+        pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+      }
+    } catch (extractError) {
+      const errorMsg = extractError?.message || String(extractError);
+      console.warn('Failed to extract text from PDF (file may be too large). Continuing without text extraction:', errorMsg);
+      // Continue without text extraction
+      pdfContent = '';
+    }
 
     const section = new HandbookSection({
       title,
@@ -876,10 +1056,10 @@ export const createHandbookSection = async (req, res, next) => {
       order: parseOrderValue(order, 0),
       published: false,
       slug,
-      fileUrl,
+      fileUrl: driveResult.previewUrl, // Store Google Drive preview URL
       fileName: sanitizedFileName,
-      googleDriveFileId: undefined,
-      googleDrivePreviewUrl: undefined,
+      googleDriveFileId: driveResult.fileId,
+      googleDrivePreviewUrl: driveResult.previewUrl,
       pdfContent,
       createdBy: userId,
       status: 'pending'
@@ -968,19 +1148,77 @@ export const updateHandbookSection = async (req, res, next) => {
       section.order = parseOrderValue(order, section.order);
     }
     if (fileUrl) {
-      const { extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-      let base64Data = fileUrl;
-      if (fileUrl.includes(',')) {
-        base64Data = fileUrl.split(',')[1];
+      // Check if it's a new file (base64) or existing Google Drive URL
+      const isBase64 = fileUrl.startsWith('data:') || (!fileUrl.startsWith('http') && !fileUrl.startsWith('uploads/'));
+      
+      if (isBase64) {
+        // New file upload - upload to Google Drive
+        const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
+        const { config } = await import('../config/index.js');
+        
+        let base64Data = fileUrl;
+        if (fileUrl.includes(',')) {
+          base64Data = fileUrl.split(',')[1];
+        }
+        
+        base64Data = base64Data.trim().replace(/\s/g, '');
+        
+        let pdfBuffer;
+        try {
+          pdfBuffer = Buffer.from(base64Data, 'base64');
+          if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error('Failed to create buffer from base64 data');
+          }
+        } catch (bufferError) {
+          console.error('Error converting base64 to buffer:', bufferError);
+          const response = { message: 'Failed to process PDF file. Invalid file format.' };
+          return res.status(400).json(response);
+        }
+        
+        // Check file size before uploading (limit to 80MB)
+        const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+        if (bufferSizeMB > 80) {
+          const response = { message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` };
+          return res.status(400).json(response);
+        }
+        
+        // Delete old file from Google Drive if it exists
+        if (section.googleDriveFileId) {
+          try {
+            await deleteFileFromDrive(section.googleDriveFileId, userId);
+          } catch (error) {
+            console.warn('Failed to delete old Google Drive file:', error.message);
+          }
+        }
+        
+        // Upload new file to Google Drive
+        const sanitizedFileName = (fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+        const driveFolderId = config.google.driveFolderId || null;
+        const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+        
+        section.fileUrl = driveResult.previewUrl;
+        section.fileName = sanitizedFileName;
+        section.googleDriveFileId = driveResult.fileId;
+        section.googleDrivePreviewUrl = driveResult.previewUrl;
+        
+        // Extract text content - make it optional for large files
+        try {
+          if (bufferSizeMB <= 80) {
+            section.pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+          } else {
+            section.pdfContent = section.pdfContent || '';
+          }
+        } catch (extractError) {
+          const errorMsg = extractError?.message || String(extractError);
+          console.warn('Failed to extract text from PDF (file may be too large). Continuing without text extraction:', errorMsg);
+          section.pdfContent = section.pdfContent || '';
+        }
+      } else {
+        // Existing Google Drive URL or file path - just update fileName if provided
+        if (fileName) {
+          section.fileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+        }
       }
-      const pdfBuffer = Buffer.from(base64Data, 'base64');
-      const sanitizedFileName = (fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-
-      section.fileUrl = fileUrl;
-      section.fileName = sanitizedFileName;
-      section.googleDriveFileId = undefined;
-      section.googleDrivePreviewUrl = undefined;
-      section.pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
     }
 
     section.status = 'pending';

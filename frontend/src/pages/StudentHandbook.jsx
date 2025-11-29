@@ -287,8 +287,10 @@ const StudentHandbook = () => {
 
   useEffect(() => {
     if (user) {
-      fetchHandbook()
-      fetchSidebarSections()
+      // Fetch in parallel for faster loading
+      Promise.all([fetchHandbook(), fetchSidebarSections()]).catch(error => {
+        console.error('Error fetching handbook data:', error);
+      });
     }
   }, [user, fetchHandbook, fetchSidebarSections])
 

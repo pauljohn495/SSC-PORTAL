@@ -969,16 +969,22 @@ const sectionStatusOrder = {
 
 export const getHandbookSectionsAdmin = async (req, res, next) => {
   try {
-    const sections = await HandbookSection.find({ archived: { $ne: true } })
+    // Exclude large fields for faster response
+    const sections = await HandbookSection.find(
+      { archived: { $ne: true } },
+      { fileUrl: 0, pdfContent: 0 } // Exclude large fields
+    )
       .populate('createdBy', 'name email')
       .populate('updatedBy', 'name email')
       .populate('approvedBy', 'name email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
+    // Client-side sort by status priority (fast operation on already fetched data)
     sections.sort((a, b) => {
-      const statusDiff = sectionStatusOrder[a.status] - sectionStatusOrder[b.status];
+      const statusDiff = (sectionStatusOrder[a.status] || 999) - (sectionStatusOrder[b.status] || 999);
       if (statusDiff !== 0) return statusDiff;
-      return b.createdAt - a.createdAt;
+      return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
     logAndSetHeader(req, res, 'GET', '/api/admin/handbook-sections', 200, sections);
