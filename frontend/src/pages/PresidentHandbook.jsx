@@ -312,6 +312,12 @@ const PresidentHandbook = () => {
       setSectionMessageType('error');
       return;
     }
+    // Check if Google Drive is connected before submitting
+    if (!driveConnected && !checkingDrive) {
+      setSectionMessage('Google Drive is not connected. Please connect your Google Drive account first to upload files.');
+      setSectionMessageType('error');
+      return;
+    }
     
     try {
       setSectionSubmitting(true);
@@ -340,6 +346,13 @@ const PresidentHandbook = () => {
       });
       const data = await response.json();
       if (!response.ok) {
+        // If Google Drive is not connected, show error with option to connect
+        if (data.driveNotConnected || data.message?.includes('Google Drive') || data.message?.includes('not connected')) {
+          setSectionMessage(data.message || 'Google Drive is not connected. Please connect your Google Drive account first.');
+          setSectionMessageType('error');
+          setSectionSubmitting(false);
+          return;
+        }
         // If the backend says we no longer have edit priority, show "Failed to Update" and close modal
         if (response.status === 409 && (data.hasPriority === false || data.message?.includes('edit priority'))) {
           setSectionMessage('Your changes will not be saved');
@@ -1042,8 +1055,49 @@ const PresidentHandbook = () => {
               </div>
             )}
             {sectionMessageType === 'error' && sectionMessage && (
-              <div className='mb-4 p-3 rounded-lg bg-red-50 text-red-800'>
+              <div className='mb-4 p-3 rounded-lg bg-red-50 text-red-800 border border-red-200'>
                 {sectionMessage}
+                {(sectionMessage.includes('Google Drive') || sectionMessage.includes('not connected')) && !driveConnected && (
+                  <div className='mt-3'>
+                    <button
+                      type='button'
+                      onClick={connectGoogleDrive}
+                      className='flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold'
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      <span>Connect Google Drive</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {!checkingDrive && !driveConnected && !sectionMessage && (
+              <div className='mb-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200'>
+                <div className='flex items-start space-x-3'>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className='flex-1'>
+                    <p className='text-sm font-medium text-yellow-800 mb-2'>
+                      Google Drive Not Connected
+                    </p>
+                    <p className='text-sm text-yellow-700 mb-3'>
+                      You need to connect your Google Drive account to upload files. Click the button below to connect.
+                    </p>
+                    <button
+                      type='button'
+                      onClick={connectGoogleDrive}
+                      className='flex items-center space-x-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold'
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      <span>Connect Google Drive</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             <form onSubmit={handleSectionSubmit} className='space-y-4'>
@@ -1118,12 +1172,13 @@ const PresidentHandbook = () => {
                 </button>
                 <button
                   type='submit'
-                  disabled={sectionSubmitting}
+                  disabled={sectionSubmitting || (!driveConnected && !checkingDrive)}
                   className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-                    sectionSubmitting
+                    sectionSubmitting || (!driveConnected && !checkingDrive)
                       ? 'bg-gray-400 cursor-not-allowed text-white'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
                   }`}
+                  title={!driveConnected && !checkingDrive ? 'Please connect Google Drive first' : ''}
                 >
                   {sectionSubmitting ? 'Saving...' : 
                    editingSection ? 'Update Section' : 'Create Section'}

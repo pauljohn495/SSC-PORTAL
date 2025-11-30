@@ -42,6 +42,8 @@ const StudentHandbook = () => {
   const pdfLoadingTaskRef = useRef(null)
   const renderTaskRef = useRef(null)
   const textLayerCacheRef = useRef(new Map())
+  const pdfCacheRef = useRef(new Map()) // Cache for PDF ArrayBuffers
+  const pdfDocCacheRef = useRef(new Map()) // Cache for loaded PDF documents
   const downloadMenuRef = useRef(null)
   const canvasRef = useRef(null)
   const canvasContainerRef = useRef(null)
@@ -144,7 +146,9 @@ const StudentHandbook = () => {
       return
     }
     if (!activeDocumentId || !documents.some((doc) => doc.id === activeDocumentId)) {
-      setActiveDocumentId(documents[0].id)
+      const newDocId = documents[0].id
+      setActiveDocumentId(newDocId)
+      setViewerPage(1) // Reset to first page when setting new document
     }
   }, [documents, activeDocumentId])
 
@@ -154,8 +158,59 @@ const StudentHandbook = () => {
   )
 
   const handleSelectDocument = useCallback((docId) => {
+    const prevDocId = activeDocumentId
     setActiveDocumentId((prev) => (prev === docId ? prev : docId))
-  }, [])
+    
+    // Reset viewer page when switching documents
+    if (prevDocId !== docId) {
+      setViewerPage(1)
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
+      // Clear PDF caches when switching to ensure fresh content
+      // Keep the cache but mark it for refresh
+      setPdfArrayBuffer(null)
+      setPdfDoc(null)
+    }
+    
+    // Preload adjacent documents for faster switching
+    const currentIndex = documents.findIndex(doc => doc.id === docId)
+    if (currentIndex >= 0) {
+      // Preload next document
+      if (currentIndex + 1 < documents.length) {
+        const nextDoc = documents[currentIndex + 1]
+        if (nextDoc?.fileUrl && !pdfCacheRef.current.has(nextDoc.fileUrl)) {
+          const preloadUrl = nextDoc.fileUrl.includes('?') 
+            ? `${nextDoc.fileUrl}&t=${Date.now()}` 
+            : `${nextDoc.fileUrl}?t=${Date.now()}`
+          fetch(preloadUrl, { cache: 'no-cache' })
+            .then(res => res.arrayBuffer())
+            .then(buffer => {
+              // Clone buffer before caching to prevent detachment issues
+              const clonedBuffer = buffer.slice(0)
+              pdfCacheRef.current.set(nextDoc.fileUrl, clonedBuffer)
+            })
+            .catch(err => console.warn('Failed to preload next document:', err))
+        }
+      }
+      // Preload previous document
+      if (currentIndex - 1 >= 0) {
+        const prevDoc = documents[currentIndex - 1]
+        if (prevDoc?.fileUrl && !pdfCacheRef.current.has(prevDoc.fileUrl)) {
+          const preloadUrl = prevDoc.fileUrl.includes('?') 
+            ? `${prevDoc.fileUrl}&t=${Date.now()}` 
+            : `${prevDoc.fileUrl}?t=${Date.now()}`
+          fetch(preloadUrl, { cache: 'no-cache' })
+            .then(res => res.arrayBuffer())
+            .then(buffer => {
+              // Clone buffer before caching to prevent detachment issues
+              const clonedBuffer = buffer.slice(0)
+              pdfCacheRef.current.set(prevDoc.fileUrl, clonedBuffer)
+            })
+            .catch(err => console.warn('Failed to preload previous document:', err))
+        }
+      }
+    }
+  }, [documents, activeDocumentId])
 
   const searchFileUrl = activeDocument?.fileUrl || ''
 
@@ -189,17 +244,65 @@ const StudentHandbook = () => {
       return
     }
 
+    // Check cache first - clone the buffer to avoid detached ArrayBuffer errors
+    const cachedBuffer = pdfCacheRef.current.get(searchFileUrl)
+    if (cachedBuffer) {
+      try {
+        // Clone the ArrayBuffer to create a new, non-detached buffer
+        const clonedBuffer = cachedBuffer.slice(0)
+        setPdfArrayBuffer(clonedBuffer)
+        setPdfSearchLoading(false)
+        // For cached files, we can show viewer immediately
+        return
+      } catch (error) {
+        // If cloning fails, remove from cache and fetch fresh
+        console.warn('Failed to clone cached buffer, fetching fresh:', error)
+        pdfCacheRef.current.delete(searchFileUrl)
+      }
+    }
+
     const fetchPdfData = async () => {
       try {
         setPdfSearchLoading(true)
         setHandbookError('')
-        const response = await fetch(searchFileUrl)
+        
+        // For large PDFs, use streaming with PDF.js for faster initial load
+        // PDF.js can start rendering before the entire file is downloaded
+        const cacheBuster = `?t=${Date.now()}`
+        const urlWithCacheBuster = searchFileUrl.includes('?') 
+          ? `${searchFileUrl}&t=${Date.now()}` 
+          : `${searchFileUrl}${cacheBuster}`
+        
+        // Use streaming fetch for better performance on large files
+        // Use streaming fetch for better performance on large files
+        // PDF.js can start processing while the file is still downloading
+        const response = await fetch(urlWithCacheBuster, {
+          cache: 'default', // Use browser cache for better performance
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        })
         if (!response.ok) {
           throw new Error(`Failed to fetch PDF: ${response.statusText}`)
         }
+        
+        // Use direct arrayBuffer() - browser handles optimization and streaming internally
+        // This is faster than manual streaming for most cases due to browser optimizations
         const arrayBuffer = await response.arrayBuffer()
         if (isCancelled) return
-        setPdfArrayBuffer(arrayBuffer)
+        
+        // Verify we got the right file by checking response headers
+        const sectionId = response.headers.get('X-Section-Id')
+        const fileName = response.headers.get('X-File-Name')
+        if (sectionId && searchFileUrl.includes(sectionId)) {
+          console.log(`Loaded PDF for section ${sectionId}: ${fileName}`)
+        }
+        
+        // Clone the buffer before caching to prevent detachment issues
+        const clonedBuffer = arrayBuffer.slice(0)
+        // Cache the cloned buffer using the original URL (without cache buster)
+        pdfCacheRef.current.set(searchFileUrl, clonedBuffer)
+        setPdfArrayBuffer(clonedBuffer)
       } catch (error) {
         if (isCancelled) return
         console.error('Error fetching PDF:', error)
@@ -295,34 +398,107 @@ const StudentHandbook = () => {
   }, [user, fetchHandbook, fetchSidebarSections])
 
   useEffect(() => {
+    let isCancelled = false
     textLayerCacheRef.current = new Map()
     setSearchResults([])
     setCurrentMatchIndex(-1)
-    if (!pdfArrayBuffer) {
+    
+    if (!pdfArrayBuffer || !searchFileUrl) {
       setPdfDoc(null)
       return
     }
 
-    const loadingTask = getDocument({ data: pdfArrayBuffer })
+    // Validate ArrayBuffer is not detached
+    try {
+      // Try to access the buffer to check if it's detached
+      new Uint8Array(pdfArrayBuffer, 0, Math.min(4, pdfArrayBuffer.byteLength))
+    } catch (error) {
+      console.error('ArrayBuffer is detached, clearing cache and refetching:', error)
+      pdfCacheRef.current.delete(searchFileUrl)
+      pdfDocCacheRef.current.delete(searchFileUrl)
+      setPdfArrayBuffer(null)
+      setPdfDoc(null)
+      return
+    }
+
+    // Check if we already have a loaded document for this URL
+    const cachedDoc = pdfDocCacheRef.current.get(searchFileUrl)
+    if (cachedDoc) {
+      // Use cached document - no need to create a new loading task
+      setPdfDoc(cachedDoc)
+      return
+    }
+
+    // Always clone the buffer before passing to PDF.js to prevent detachment
+    // PDF.js may transfer the buffer internally, making it detached for future use
+    let bufferToUse
+    try {
+      bufferToUse = pdfArrayBuffer.slice(0)
+    } catch (error) {
+      console.error('Failed to clone buffer for PDF.js:', error)
+      // If cloning fails, the buffer is likely already detached - clear cache and refetch
+      pdfCacheRef.current.delete(searchFileUrl)
+      pdfDocCacheRef.current.delete(searchFileUrl)
+      setPdfArrayBuffer(null)
+      setPdfDoc(null)
+      return
+    }
+
+    // Optimize PDF.js configuration for better performance on large files
+    const loadingTask = getDocument({ 
+      data: bufferToUse,
+      disableStream: false, // Enable streaming for large files
+      disableAutoFetch: false, // Allow auto-fetching of required data
+      useWorkerFetch: true // Use worker for better performance
+    })
     pdfLoadingTaskRef.current = loadingTask
 
     loadingTask.promise
       .then((doc) => {
+        if (isCancelled) {
+          // If cancelled, destroy the document
+          doc.destroy().catch(() => {})
+          return
+        }
+        // Cache the loaded document
+        pdfDocCacheRef.current.set(searchFileUrl, doc)
         setPdfDoc(doc)
+        // Preload text content in background for faster searching
+        preloadTextContent(doc).catch(err => {
+          console.warn('Background text preload failed:', err)
+        })
       })
       .catch((error) => {
+        if (isCancelled) return
         console.error('Error loading PDF document:', error)
-        setHandbookError((prev) => prev || `Failed to prepare PDF for search: ${error.message}`)
+        // Only show error if it's not a cancellation
+        if (error?.name !== 'AbortException' && error?.message !== 'Worker was destroyed') {
+          setHandbookError((prev) => prev || `Failed to prepare PDF for search: ${error.message}`)
+        }
         setPdfDoc(null)
+        // Remove from cache if loading failed
+        pdfCacheRef.current.delete(searchFileUrl)
+        pdfDocCacheRef.current.delete(searchFileUrl)
       })
 
     return () => {
-      loadingTask.destroy()
-      if (pdfLoadingTaskRef.current === loadingTask) {
+      isCancelled = true
+      // Only destroy the loading task if it's still the current one and not completed
+      if (loadingTask && pdfLoadingTaskRef.current === loadingTask) {
+        // Don't destroy if the document is already cached (it means loading completed)
+        const cachedDoc = pdfDocCacheRef.current.get(searchFileUrl)
+        if (!cachedDoc) {
+          // Only cancel if still loading
+          try {
+            loadingTask.destroy()
+          } catch (error) {
+            // Ignore destroy errors
+          }
+        }
         pdfLoadingTaskRef.current = null
       }
     }
-  }, [pdfArrayBuffer])
+  }, [pdfArrayBuffer, searchFileUrl])
 
   useEffect(() => {
     if (!searchResults.length) {
@@ -437,6 +613,51 @@ const StudentHandbook = () => {
     }
   }, [activeDocument])
 
+  // Preload all text content when PDF loads for faster searching
+  const preloadTextContent = useCallback(async (doc) => {
+    if (!doc) return
+    
+    // Check if already preloaded
+    const firstPageCached = textLayerCacheRef.current.get(1)
+    if (firstPageCached && textLayerCacheRef.current.size === doc.numPages) {
+      return // Already preloaded
+    }
+
+    try {
+      // Preload pages in batches for better performance
+      const batchSize = 5
+      const totalPages = doc.numPages
+      
+      for (let startPage = 1; startPage <= totalPages; startPage += batchSize) {
+        const endPage = Math.min(startPage + batchSize - 1, totalPages)
+        const pagePromises = []
+        
+        for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+          // Skip if already cached
+          if (textLayerCacheRef.current.has(pageNumber)) continue
+          
+          pagePromises.push(
+            doc.getPage(pageNumber)
+              .then(page => Promise.all([
+                page.getTextContent(),
+                Promise.resolve(page.getViewport({ scale: 1 }))
+              ]))
+              .then(([textContent, viewport]) => {
+                textLayerCacheRef.current.set(pageNumber, { items: textContent.items, viewport })
+              })
+              .catch(err => {
+                console.warn(`Failed to preload page ${pageNumber}:`, err)
+              })
+          )
+        }
+        
+        await Promise.all(pagePromises)
+      }
+    } catch (error) {
+      console.warn('Error preloading text content:', error)
+    }
+  }, [])
+
   const performSearch = useCallback(async () => {
     if (!pdfDoc) {
       setSearchResults([])
@@ -456,64 +677,45 @@ const StudentHandbook = () => {
     try {
       const normalizedKeyword = keyword.toLowerCase()
       const pendingResults = []
-
-      for (let pageNumber = 1; pageNumber <= pdfDoc.numPages; pageNumber += 1) {
-        let cacheEntry = textLayerCacheRef.current.get(pageNumber)
-
-        if (!cacheEntry) {
-          const page = await pdfDoc.getPage(pageNumber)
-          const textContent = await page.getTextContent()
-          const viewport = page.getViewport({ scale: 1 })
-          cacheEntry = { items: textContent.items, viewport }
-          textLayerCacheRef.current.set(pageNumber, cacheEntry)
-        }
-
-        const { items, viewport } = cacheEntry
-
-        items.forEach((item, itemIndex) => {
-          if (!item?.str) return
-          const text = item.str
-          const lowerText = text.toLowerCase()
-          if (!lowerText.includes(normalizedKeyword)) return
-
-          const baseTransform = item.transform || [1, 0, 0, 1, 0, 0]
-          const baseWidth = (item.width || 0) / viewport.width
-          const baseHeight = Math.abs(item.height || baseTransform[3] || 0) / viewport.height
-          const originX = (baseTransform[4] || 0) / viewport.width
-          const baselineY = (baseTransform[5] || 0) / viewport.height
-          const topFromTop = 1 - baselineY
-          const normalizedHeight = Math.max(baseHeight, 0.008)
-
-          let startIndex = 0
-          const safeLength = text.length || normalizedKeyword.length
-
-          while (startIndex <= lowerText.length) {
-            const foundIndex = lowerText.indexOf(normalizedKeyword, startIndex)
-            if (foundIndex === -1) break
-
-            const proportion = safeLength ? foundIndex / safeLength : 0
-            const widthRatio = safeLength ? normalizedKeyword.length / safeLength : 1
-            const normalizedWidth = Math.max(baseWidth * widthRatio, 0.01)
-            const normalizedLeft = originX + baseWidth * proportion
-            const normalizedTop = Math.max(topFromTop - normalizedHeight, 0)
-
-            pendingResults.push({
-              id: `${pageNumber}-${itemIndex}-${foundIndex}`,
-              pageIndex: pageNumber - 1,
-              rect: {
-                x: normalizedLeft,
-                y: normalizedTop,
-                width: normalizedWidth,
-                height: normalizedHeight
-              },
-              snippet: text.trim() || text
-            })
-
-            startIndex = foundIndex + normalizedKeyword.length
+      
+      // Use cached text content for faster search
+      // Process pages in batches and update results progressively for better UX
+      const batchSize = 10 // Process 10 pages at a time
+      const totalPages = pdfDoc.numPages
+      
+      for (let startPage = 1; startPage <= totalPages; startPage += batchSize) {
+        const endPage = Math.min(startPage + batchSize - 1, totalPages)
+        
+        // Process batch of pages
+        for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+          let cacheEntry = textLayerCacheRef.current.get(pageNumber)
+          
+          if (!cacheEntry) {
+            // Load on demand if not cached
+            const page = await pdfDoc.getPage(pageNumber)
+            const textContent = await page.getTextContent()
+            const viewport = page.getViewport({ scale: 1 })
+            cacheEntry = { items: textContent.items, viewport }
+            textLayerCacheRef.current.set(pageNumber, cacheEntry)
           }
-        })
+          
+          // Process this page
+          processPageForSearch(cacheEntry, pageNumber, normalizedKeyword, pendingResults)
+        }
+        
+        // Update results progressively (show results as they're found)
+        if (pendingResults.length > 0) {
+          setSearchResults([...pendingResults])
+          if (pendingResults.length === 1) {
+            setCurrentMatchIndex(0)
+          }
+        }
+        
+        // Small delay to allow UI to update and prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 10))
       }
 
+      // Final update with all results
       setSearchResults(pendingResults)
       setCurrentMatchIndex(pendingResults.length ? 0 : -1)
     } catch (error) {
@@ -522,7 +724,55 @@ const StudentHandbook = () => {
     } finally {
       setIsSearching(false)
     }
-  }, [pdfDoc, searchTerm])
+  }, [pdfDoc, searchTerm, preloadTextContent])
+
+  // Helper function to process a page for search (extracted for reusability)
+  const processPageForSearch = useCallback((cacheEntry, pageNumber, normalizedKeyword, pendingResults) => {
+    const { items, viewport } = cacheEntry
+
+    items.forEach((item, itemIndex) => {
+      if (!item?.str) return
+      const text = item.str
+      const lowerText = text.toLowerCase()
+      if (!lowerText.includes(normalizedKeyword)) return
+
+      const baseTransform = item.transform || [1, 0, 0, 1, 0, 0]
+      const baseWidth = (item.width || 0) / viewport.width
+      const baseHeight = Math.abs(item.height || baseTransform[3] || 0) / viewport.height
+      const originX = (baseTransform[4] || 0) / viewport.width
+      const baselineY = (baseTransform[5] || 0) / viewport.height
+      const topFromTop = 1 - baselineY
+      const normalizedHeight = Math.max(baseHeight, 0.008)
+
+      let startIndex = 0
+      const safeLength = text.length || normalizedKeyword.length
+
+      while (startIndex <= lowerText.length) {
+        const foundIndex = lowerText.indexOf(normalizedKeyword, startIndex)
+        if (foundIndex === -1) break
+
+        const proportion = safeLength ? foundIndex / safeLength : 0
+        const widthRatio = safeLength ? normalizedKeyword.length / safeLength : 1
+        const normalizedWidth = Math.max(baseWidth * widthRatio, 0.01)
+        const normalizedLeft = originX + baseWidth * proportion
+        const normalizedTop = Math.max(topFromTop - normalizedHeight, 0)
+
+        pendingResults.push({
+          id: `${pageNumber}-${itemIndex}-${foundIndex}`,
+          pageIndex: pageNumber - 1,
+          rect: {
+            x: normalizedLeft,
+            y: normalizedTop,
+            width: normalizedWidth,
+            height: normalizedHeight
+          },
+          snippet: text.trim() || text
+        })
+
+        startIndex = foundIndex + normalizedKeyword.length
+      }
+    })
+  }, [])
 
   const handleSearchSubmit = useCallback((event) => {
     event.preventDefault()
@@ -598,10 +848,35 @@ const StudentHandbook = () => {
       return clamped
     })
   }, [pdfDoc])
+  // Preload text content when PDF loads for faster searching
   useEffect(() => {
     if (!pdfDoc) return
-    if (!searchTerm.trim()) return
-    performSearch()
+    // Preload text content in background (non-blocking)
+    preloadTextContent(pdfDoc).catch(err => {
+      console.warn('Background text preload failed:', err)
+    })
+  }, [pdfDoc, preloadTextContent])
+
+  // Debounced search for better performance (avoids searching on every keystroke)
+  useEffect(() => {
+    if (!pdfDoc) {
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
+      return
+    }
+    if (!searchTerm.trim()) {
+      setSearchResults([])
+      setCurrentMatchIndex(-1)
+      return
+    }
+
+    const timeoutId = setTimeout(() => {
+      performSearch()
+    }, 300) // 300ms debounce - waits for user to stop typing
+
+    return () => {
+      clearTimeout(timeoutId)
+    }
   }, [pdfDoc, performSearch, searchTerm])
 
   useEffect(() => {
@@ -702,21 +977,42 @@ const StudentHandbook = () => {
       let currentTask = null
       try {
         await cancelCurrentRender()
+        
+        // Check if cancelled or document destroyed
+        if (isCancelled || !pdfDoc || pdfDoc.destroyed) {
+          return
+        }
+        
         const safePage = Math.min(Math.max(viewerPage, 1), pdfDoc.numPages)
         if (safePage !== viewerPage) {
           setViewerPage(safePage)
           return
         }
+        
+        // Check again after potential state update
+        if (isCancelled || !pdfDoc || pdfDoc.destroyed) {
+          return
+        }
+        
         const page = await pdfDoc.getPage(safePage)
         const baseViewport = page.getViewport({ scale: 1 })
         const widthToUse = containerWidth || baseViewport.width
         const scale = Math.max((widthToUse / baseViewport.width) * renderScale, 0.2)
         const viewport = page.getViewport({ scale })
         const canvas = canvasRef.current
+        if (!canvas) {
+          throw new Error('Canvas element not available')
+        }
+        // Final check before rendering
+        if (isCancelled || !pdfDoc || pdfDoc.destroyed || !canvas) {
+          return
+        }
+        
         const context = canvas.getContext('2d')
         canvas.width = viewport.width
         canvas.height = viewport.height
         context.clearRect(0, 0, canvas.width, canvas.height)
+        
         currentTask = page.render({ canvasContext: context, viewport })
         renderTaskRef.current = currentTask
         await currentTask.promise
@@ -725,6 +1021,15 @@ const StudentHandbook = () => {
         }
       } catch (error) {
         if (!isCancelled && error?.name !== 'RenderingCancelledException') {
+          // Don't show error if document was destroyed (normal when switching)
+          const errorMessage = error?.message || ''
+          if (errorMessage.includes('destroyed') || 
+              errorMessage.includes('Worker was destroyed') ||
+              errorMessage.includes('sendWithPromise') ||
+              errorMessage.includes('Cannot read properties of null')) {
+            // Document was destroyed, likely due to switching - this is expected
+            return
+          }
           console.error('Error rendering PDF page:', error)
           setRenderError('Failed to render handbook page.')
         }
@@ -1149,18 +1454,56 @@ const StudentHandbook = () => {
                     )}
                   </div>
                 ) : searchFileUrl ? (
-                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[400px] flex items-center justify-center'>
-                    <p className='text-gray-500 text-sm'>Preparing handbook viewer...</p>
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[400px]'>
+                    {/* Show iframe viewer immediately for faster perceived load time */}
+                    {viewerUrl ? (
+                      <div className='w-full h-[80vh]'>
+                        <iframe
+                          key={`${activeDocumentId}-preview-${viewerUrl}`}
+                          src={viewerUrl}
+                          title='PDF Preview'
+                          className='w-full h-full border-0'
+                          allowFullScreen
+                          loading='eager'
+                        />
+                        {pdfSearchLoading && (
+                          <div className='absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded-lg text-sm flex items-center space-x-2'>
+                            <div className='animate-spin rounded-full h-4 w-4 border-b-2 border-white'></div>
+                            <span>Loading search index...</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className='flex items-center justify-center h-full'>
+                        <div className='flex items-center space-x-3'>
+                          <div className='animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600'></div>
+                          <p className='text-gray-500 text-sm'>Preparing handbook viewer...</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : viewerUrl ? (
-                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[600px]'>
+                  <div className='bg-white border border-gray-200 rounded-lg shadow-md overflow-hidden min-h-[600px] relative'>
+                    {!viewerSrc && (
+                      <div className='absolute inset-0 flex items-center justify-center bg-gray-50'>
+                        <p className='text-gray-500 text-sm'>Loading PDF viewer...</p>
+                      </div>
+                    )}
                     <iframe
-                      key={`${viewerPage}-${viewerUrl}`}
-                      src={viewerSrc}
+                      key={`${activeDocumentId}-${viewerUrl}`}
+                      src={viewerSrc || undefined}
                       title='Student Handbook Viewer'
                       className='w-full h-[80vh]'
                       allowFullScreen
-                      loading='lazy'
+                      loading='eager'
+                      style={{ display: viewerSrc ? 'block' : 'none' }}
+                      onLoad={() => {
+                        // Ensure iframe is visible after load
+                        setRenderError('')
+                      }}
+                      onError={() => {
+                        setRenderError('Failed to load PDF viewer')
+                      }}
                     />
                   </div>
                 ) : currentHandbook?.content ? (

@@ -31,6 +31,8 @@ handbookSectionSchema.index({ published: 1, status: 1, archived: 1 });
 handbookSectionSchema.index({ archived: 1, status: 1 });
 handbookSectionSchema.index({ order: 1, createdAt: 1 });
 handbookSectionSchema.index({ createdAt: -1 });
+// Compound index for search queries (optimizes the search query pattern)
+handbookSectionSchema.index({ published: 1, status: 1, archived: 1, pdfContent: 1 });
 
 const HandbookSection = mongoose.model('HandbookSection', handbookSectionSchema);
 

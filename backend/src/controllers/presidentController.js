@@ -1029,6 +1029,17 @@ export const createHandbookSection = async (req, res, next) => {
       return res.status(400).json(response);
     }
     
+    // Check if Google Drive is connected before attempting upload
+    const driveConnected = Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken);
+    if (!driveConnected) {
+      const response = { 
+        message: 'Google Drive is not connected. Please connect your Google Drive account first before uploading files.',
+        driveNotConnected: true
+      };
+      logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 400, response);
+      return res.status(400).json(response);
+    }
+    
     // Upload to Google Drive
     const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
     const { config } = await import('../config/index.js');

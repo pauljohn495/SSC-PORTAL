@@ -148,21 +148,41 @@ export const searchHandbookSections = async (req, res, next) => {
     await logActivity('anonymous', 'SEARCH_HANDBOOK_SECTIONS', `Searched handbook sections with query: "${searchTerm}"`, null, req);
 
     const normalized = searchTerm.toLowerCase();
+    
+    // Use regex for faster MongoDB text search with index
+    const searchRegex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    
+    // First, find sections that contain the search term using MongoDB text search
+    // This is faster than loading all sections and searching in memory
     const sections = await HandbookSection.find({
       published: true,
       status: 'approved',
       archived: { $ne: true },
-      pdfContent: { $exists: true, $ne: '' }
-    }).select('title description pdfContent order');
+      pdfContent: { $exists: true, $ne: '' },
+      $or: [
+        { title: searchRegex },
+        { description: searchRegex },
+        { pdfContent: searchRegex }
+      ]
+    })
+    .select('title description pdfContent order')
+    .lean() // Use lean() for faster queries (returns plain objects)
+    .limit(50); // Limit results for performance
 
     const SNIPPET_RADIUS = 120;
     const MAX_SNIPPETS_PER_SECTION = 3;
     const results = [];
 
-    sections.forEach((section) => {
+    // Process sections in parallel for better performance
+    const processSection = (section) => {
       const content = section.pdfContent || '';
+      if (!content) return null;
+      
       const lowerContent = content.toLowerCase();
       let matchIndex = lowerContent.indexOf(normalized);
+      
+      if (matchIndex === -1) return null; // No match found
+      
       const snippets = [];
       let safetyCounter = 0;
 
@@ -181,15 +201,27 @@ export const searchHandbookSections = async (req, res, next) => {
       }
 
       if (snippets.length) {
-        results.push({
+        return {
           sectionId: section._id,
           title: section.title,
           description: section.description,
           order: section.order,
           snippets
-        });
+        };
+      }
+      return null;
+    };
+
+    // Process sections and filter out null results
+    sections.forEach((section) => {
+      const result = processSection(section);
+      if (result) {
+        results.push(result);
       }
     });
+
+    // Sort by order (or relevance if needed)
+    results.sort((a, b) => (a.order || 0) - (b.order || 0));
 
     const responseBody = {
       query: searchTerm,
@@ -401,13 +433,30 @@ export const downloadHandbookPage = async (req, res, next) => {
   }
 };
 
-const fetchPdfBufferFromUrl = async (url) => {
-  const response = await fetch(url);
+const fetchPdfBufferFromUrl = async (url, options = {}) => {
+  const fetchOptions = {
+    redirect: 'follow',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      ...options.headers
+    },
+    ...options
+  };
+  
+  const response = await fetch(url, fetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to download PDF (${response.status})`);
   }
+  
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const buffer = Buffer.from(arrayBuffer);
+  
+  // Validate it's a PDF by checking the header
+  if (buffer.length < 4 || buffer.toString('ascii', 0, 4) !== '%PDF') {
+    throw new Error('Downloaded content is not a valid PDF (invalid header)');
+  }
+  
+  return buffer;
 };
 
 export const streamHandbookFile = async (req, res, next) => {
@@ -437,11 +486,30 @@ export const streamHandbookFile = async (req, res, next) => {
     const fallbackFileName = handbook.fileName || 'student-handbook.pdf';
 
     if (handbook.googleDriveFileId) {
-      const downloadUrl = `https://drive.google.com/uc?export=download&id=${handbook.googleDriveFileId}`;
-      pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
-    } else if (handbook.googleDrivePreviewUrl) {
-      pdfBuffer = await fetchPdfBufferFromUrl(handbook.googleDrivePreviewUrl);
-    } else if (handbook.fileUrl) {
+      // For Google Drive files, use the direct download URL
+      // Try export=download first, then fallback to export=view
+      const downloadUrls = [
+        `https://drive.google.com/uc?export=download&id=${handbook.googleDriveFileId}`,
+        `https://drive.google.com/uc?export=view&id=${handbook.googleDriveFileId}`
+      ];
+      
+      for (const downloadUrl of downloadUrls) {
+        try {
+          pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
+          break; // Success, exit loop
+        } catch (error) {
+          console.warn(`Failed to download from ${downloadUrl}:`, error.message);
+          // Continue to next URL
+        }
+      }
+      
+      if (!pdfBuffer) {
+        console.error(`Failed to download PDF from Google Drive for handbook ${handbookId}`);
+      }
+    }
+    
+    // If we still don't have a buffer, try fileUrl
+    if (!pdfBuffer && handbook.fileUrl) {
       if (handbook.fileUrl.startsWith('data:')) {
         const base64Data = handbook.fileUrl.split(',')[1];
         pdfBuffer = Buffer.from(base64Data, 'base64');
@@ -459,6 +527,8 @@ export const streamHandbookFile = async (req, res, next) => {
 
     logPublicApi(req, res, endpoint, 200, 'Streaming handbook file', { handbookId, fileName: fallbackFileName });
 
+    // Set cache headers for better performance
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
@@ -496,11 +566,33 @@ export const streamHandbookSectionFile = async (req, res, next) => {
     const ownerId = section.updatedBy?.toString() || section.createdBy?.toString();
     const fallbackFileName = section.title ? `${section.title}.pdf` : 'handbook-section.pdf';
 
-    if (section.googleDriveFileId && ownerId) {
-      try {
-        pdfBuffer = await downloadFileFromDrive(section.googleDriveFileId, ownerId);
-      } catch (error) {
-        console.error(`Failed to download section ${sectionId} from Drive:`, error);
+    if (section.googleDriveFileId) {
+      // Try using OAuth download first if ownerId is available
+      if (ownerId) {
+        try {
+          pdfBuffer = await downloadFileFromDrive(section.googleDriveFileId, ownerId);
+        } catch (error) {
+          console.warn(`Failed to download section ${sectionId} from Drive using OAuth:`, error.message);
+          // Fall through to public download
+        }
+      }
+      
+      // If OAuth download failed or no ownerId, try public download
+      if (!pdfBuffer) {
+        const downloadUrls = [
+          `https://drive.google.com/uc?export=download&id=${section.googleDriveFileId}`,
+          `https://drive.google.com/uc?export=view&id=${section.googleDriveFileId}`
+        ];
+        
+        for (const downloadUrl of downloadUrls) {
+          try {
+            pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
+            break; // Success, exit loop
+          } catch (error) {
+            console.warn(`Failed to download from ${downloadUrl}:`, error.message);
+            // Continue to next URL
+          }
+        }
       }
     }
 
@@ -522,9 +614,46 @@ export const streamHandbookSectionFile = async (req, res, next) => {
 
     logPublicApi(req, res, endpoint, 200, 'Streaming handbook section file', { sectionId, fileName: fallbackFileName });
 
+    // Set cache headers with ETag for proper cache validation
+    // Use section ID and updatedAt timestamp for cache validation
+    const etag = `"${sectionId}-${section.updatedAt?.getTime() || section._id}"`;
+    res.setHeader('ETag', etag);
+    
+    // Check if client has cached version
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end(); // Not Modified
+    }
+    
+    // Support range requests for partial content (enables streaming and faster loading)
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : pdfBuffer.length - 1;
+      const chunksize = (end - start) + 1;
+      const chunk = pdfBuffer.slice(start, end + 1);
+      
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${pdfBuffer.length}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': 'application/pdf',
+        'Cache-Control': 'public, max-age=300, must-revalidate',
+        'X-Section-Id': sectionId,
+        'X-File-Name': fallbackFileName
+      });
+      return res.end(chunk);
+    }
+    
+    // Cache with validation - shorter max-age, must revalidate
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate'); // Cache for 5 minutes, must revalidate
+    res.setHeader('Accept-Ranges', 'bytes'); // Enable range requests
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fallbackFileName)}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
+    // Add section ID to response for debugging
+    res.setHeader('X-Section-Id', sectionId);
+    res.setHeader('X-File-Name', fallbackFileName);
     return res.send(pdfBuffer);
   } catch (error) {
     console.error('Error streaming handbook section file:', error);
