@@ -423,7 +423,7 @@ const Archived = () => {
                     return (
                     <div key={section._id} className='border border-gray-200 rounded-lg p-3 sm:p-4'>
                       <h3 className='font-semibold text-gray-800 truncate text-sm sm:text-base'>{section.title}</h3>
-                      <p className='text-xs sm:text-sm text-gray-500 mt-1'>Department: <span className='font-medium text-gray-800'>{section.department?.name || 'Unknown'}</span></p>
+                      <p className='text-xs sm:text-sm text-gray-500 mt-1'>College: <span className='font-medium text-gray-800'>{section.department?.name || 'Unknown'}</span></p>
                       <p className='text-xs sm:text-sm text-gray-500'>Status: <span className='font-medium text-gray-800 capitalize'>{section.status}</span></p>
                       <p className='text-xs sm:text-sm text-gray-500'>Archived: <span className='font-medium text-gray-800'>{formatDateTime(section.archivedAt)}</span></p>
                       {section.createdBy && (
