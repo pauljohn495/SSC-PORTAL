@@ -27,7 +27,6 @@ import PresidentCalendar from './pages/PresidentCalendar'
 import Search from './pages/Search'
 import AdminPolicy from './pages/AdminPolicy'
 import AdminBackup from './pages/AdminBackup'
-import { subscribeOnMessage } from './firebase'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import { onEvent } from './realtime/socket'
@@ -35,30 +34,6 @@ import { onEvent } from './realtime/socket'
 function App() {
 
   useEffect(() => {
-    let unsubscribe = () => {}
-    (async () => {
-      unsubscribe = await subscribeOnMessage((payload) => {
-        const n = payload?.notification || {}
-        const d = payload?.data || {}
-        const title = n.title || d.title || 'Notification'
-        const body = n.body || d.body || ''
-        toast.info(body || title, { position: 'bottom-right', autoClose: 5000, hideProgressBar: false, closeOnClick: true })
-      })
-    })()
-    // Also listen for messages forwarded by the service worker (background cases)
-    const onSwMessage = (event) => {
-      if (event?.data?.type === 'fcm-bg') {
-        const payload = event.data.payload || {}
-        const n = payload?.notification || {}
-        const d = payload?.data || {}
-        const title = n.title || d.title || 'Notification'
-        const body = n.body || d.body || ''
-        toast.info(body || title, { position: 'bottom-right', autoClose: 5000, hideProgressBar: false, closeOnClick: true })
-      }
-    }
-    if (navigator?.serviceWorker) {
-      navigator.serviceWorker.addEventListener('message', onSwMessage)
-    }
     // Socket.IO events -> show toast
     const off1 = onEvent('notification:published', (n) => {
       const msg = n?.message || n?.title || 'New notification'
@@ -71,11 +46,9 @@ function App() {
       toast.info(`Memorandum approved: ${m?.title || ''}`, { position: 'bottom-right', autoClose: 5000 })
     })
     return () => {
-      try { unsubscribe() } catch {}
-      if (navigator?.serviceWorker) {
-        navigator.serviceWorker.removeEventListener('message', onSwMessage)
-      }
-      off1 && off1(); off2 && off2(); off3 && off3();
+      off1 && off1()
+      off2 && off2()
+      off3 && off3()
     }
   }, [])
 

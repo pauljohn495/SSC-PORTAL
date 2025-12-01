@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { hashPassword, comparePassword as comparePasswordHelper } from '../utils/security.js';
 
 const userSchema = new mongoose.Schema({
   googleId: { type: String, sparse: true, unique: true }, // Allow null for manual admins, but unique when present
@@ -17,7 +18,6 @@ const userSchema = new mongoose.Schema({
   setupTokenExpiry: Date,
   archived: { type: Boolean, default: false },
   archivedAt: Date,
-  fcmTokens: { type: [String], default: [] },
   // Google Calendar OAuth tokens (only for president role)
   googleCalendar: {
     accessToken: String,
@@ -35,6 +35,39 @@ const userSchema = new mongoose.Schema({
     expiryDate: Number
   }
 }, { timestamps: true });
+
+const isBcryptHash = (value) => typeof value === 'string' && /^\$2[aby]\$/.test(value);
+
+userSchema.pre('save', async function handlePasswordHash(next) {
+  if (!this.isModified('password') || !this.password) {
+    return next();
+  }
+
+  try {
+    this.password = await hashPassword(this.password);
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
+
+userSchema.methods.comparePassword = async function comparePasswordMethod(candidatePassword) {
+  if (!this.password) {
+    return false;
+  }
+
+  if (!isBcryptHash(this.password)) {
+    const matches = this.password === candidatePassword;
+    if (matches) {
+      // Trigger hashing via pre-save hook so we migrate legacy plaintext passwords
+      this.password = candidatePassword;
+      await this.save();
+    }
+    return matches;
+  }
+
+  return comparePasswordHelper(candidatePassword, this.password);
+};
 
 const User = mongoose.model('User', userSchema);
 

@@ -8,7 +8,6 @@ router.post('/admin', authController.adminLogin);
 router.post('/forgot-password', authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 router.post('/setup-account', authController.setupAccount);
-router.post('/fcm-token', authController.registerFcmToken);
 router.post('/test-email', authController.testEmail); // Development only
 router.put('/profile/:id', authController.updateProfile);
 

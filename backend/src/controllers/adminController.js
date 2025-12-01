@@ -16,11 +16,11 @@ import PolicySection from '../models/PolicySection.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
-import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 import { deletePDFFile } from '../utils/fileStorage.js';
 import { deleteFileFromCloudinary } from '../utils/cloudinary.js';
+import { createSecureToken } from '../utils/security.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -198,7 +198,7 @@ export const addAdmin = async (req, res, next) => {
     }
 
     // Generate setup token
-    const setupToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const { token: setupToken, hashedToken: hashedSetupToken } = createSecureToken();
     const setupTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     let admin;
@@ -206,7 +206,7 @@ export const addAdmin = async (req, res, next) => {
       // Update existing archived user
       existingUser.role = 'admin';
       existingUser.name = name;
-      existingUser.setupToken = setupToken;
+      existingUser.setupToken = hashedSetupToken;
       existingUser.setupTokenExpiry = setupTokenExpiry;
       existingUser.password = null; // Clear password until setup
       existingUser.username = null; // Clear username until setup
@@ -218,7 +218,7 @@ export const addAdmin = async (req, res, next) => {
         email,
         name,
         role: 'admin',
-        setupToken,
+        setupToken: hashedSetupToken,
         setupTokenExpiry
       });
       await admin.save();
@@ -755,7 +755,6 @@ export const updateHandbookStatus = async (req, res, next) => {
         
         // Send push notification once for the entire handbook
         try {
-          await sendPushToAllUsers('New Handbook Published', `The student handbook "${handbook.fileName || 'Handbook'}" is now available.`);
         } catch (pushErr) {
           console.error('Push send error (handbook approve):', pushErr);
         }
@@ -1235,7 +1234,6 @@ export const updateMemorandumStatus = async (req, res, next) => {
     // If approved, send push to all users
     if (status === 'approved') {
       try {
-        await sendPushToAllUsers('New Memorandum Published', `${memorandum.title} is now available.`);
       } catch (pushErr) {
         console.error('Push send error (memorandum approve):', pushErr);
       }

@@ -3,6 +3,7 @@ import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
 import mongoose from 'mongoose';
+import { createSecureToken, hashToken } from '../utils/security.js';
 
 // Helper function to create simplified log and set response header
 const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
@@ -309,8 +310,9 @@ export const adminLogin = async (req, res, next) => {
       return res.status(401).json(response);
     }
 
-    // Check password
-    if (user.password !== password) {
+    // Check password using bcrypt hash
+    const passwordMatches = await user.comparePassword(password);
+    if (!passwordMatches) {
       const response = { message: 'Invalid credentials' };
       logAndSetHeader(req, res, 'POST', '/api/auth/admin', 401, response);
       return res.status(401).json(response);
@@ -377,9 +379,9 @@ export const forgotPassword = async (req, res, next) => {
       return res.json(response);
     }
 
-    const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const { token: resetToken, hashedToken: hashedResetToken } = createSecureToken();
     
-    user.resetToken = resetToken;
+    user.resetToken = hashedResetToken;
     user.resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
     await user.save();
 
@@ -610,8 +612,10 @@ export const resetPassword = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
+    const hashedToken = hashToken(token);
+
     const user = await User.findOne({ 
-      resetToken: token,
+      resetToken: hashedToken,
       resetTokenExpiry: { $gt: new Date() }
     });
 
@@ -651,8 +655,10 @@ export const setupAccount = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
+    const hashedToken = hashToken(token);
+
     const user = await User.findOne({ 
-      setupToken: token,
+      setupToken: hashedToken,
       setupTokenExpiry: { $gt: new Date() }
     });
 
@@ -693,36 +699,6 @@ export const setupAccount = async (req, res, next) => {
 };
 
 // Register/update FCM token for a user
-export const registerFcmToken = async (req, res, next) => {
-  try {
-    const { userId, fcmToken } = req.body;
-    if (!userId || !fcmToken) {
-      const response = { message: 'userId and fcmToken are required' };
-      logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 400, response);
-      return res.status(400).json(response);
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      const response = { message: 'User not found' };
-      logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 404, response);
-      return res.status(404).json(response);
-    }
-
-    if (!user.fcmTokens) user.fcmTokens = [];
-    if (!user.fcmTokens.includes(fcmToken)) {
-      user.fcmTokens.push(fcmToken);
-      await user.save();
-    }
-
-    const response = { message: 'FCM token registered' };
-    logAndSetHeader(req, res, 'POST', '/api/auth/fcm-token', 200, response);
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const updateProfile = async (req, res, next) => {
   try {
     const { id } = req.params;

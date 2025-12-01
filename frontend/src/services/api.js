@@ -61,10 +61,6 @@ export const authAPI = {
     method: 'POST',
     body: { token, newPassword },
   }),
-  registerFcmToken: ({ userId, fcmToken }) => apiRequest('/auth/fcm-token', {
-    method: 'POST',
-    body: { userId, fcmToken },
-  }),
   updateProfile: (userId, data) => apiRequest(`/auth/profile/${userId}`, {
     method: 'PUT',
     body: data,

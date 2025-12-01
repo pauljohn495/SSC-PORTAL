@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { publicAPI } from '../services/api';
-import { subscribeOnMessage } from '../firebase';
 import { onEvent } from '../realtime/socket';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -30,30 +29,6 @@ const NotificationDropdown = () => {
     const interval = setInterval(fetchNotifications, 30000);
     
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
-
-  // Realtime: update list/badge on FCM foreground/background messages
-  useEffect(() => {
-    let unsubscribe = () => {};
-    (async () => {
-      unsubscribe = await subscribeOnMessage(() => {
-        fetchNotifications();
-      });
-    })();
-    const onSwMessage = (event) => {
-      if (event?.data?.type === 'fcm-bg') {
-        fetchNotifications();
-      }
-    };
-    if (navigator?.serviceWorker) {
-      navigator.serviceWorker.addEventListener('message', onSwMessage);
-    }
-    return () => {
-      try { unsubscribe(); } catch {}
-      if (navigator?.serviceWorker) {
-        navigator.serviceWorker.removeEventListener('message', onSwMessage);
-      }
-    };
   }, [fetchNotifications]);
 
   // Realtime: Socket.IO events

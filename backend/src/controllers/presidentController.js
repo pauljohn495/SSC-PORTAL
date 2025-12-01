@@ -7,7 +7,6 @@ import HandbookSection from '../models/HandbookSection.js';
 import { logActivity } from '../utils/activityLogger.js';
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
-import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { extractTextFromPDF } from '../utils/pdfExtractor.js';
 import { google } from 'googleapis';
@@ -1405,7 +1404,6 @@ export const publishNotification = async (req, res, next) => {
 
     // Send push to target users 
     try {
-      await sendPushToAllUsers(notification.title, notification.message, departmentFilter);
     } catch (pushErr) {
       console.error('Error sending push notifications:', pushErr);
     }

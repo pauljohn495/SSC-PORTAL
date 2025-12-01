@@ -3,8 +3,6 @@ import Memorandum from '../models/Memorandum.js';
 import Notification from '../models/Notification.js';
 import HandbookSection from '../models/HandbookSection.js';
 import { getDepartments } from '../data/departments.js';
-import { getFirebaseAdmin } from '../config/firebaseAdmin.js';
-import User from '../models/User.js';
 import { readPDFFromFile } from '../utils/fileStorage.js';
 import { PDFDocument } from 'pdf-lib';
 import { downloadFileFromCloudinary } from '../utils/cloudinary.js';
@@ -240,43 +238,6 @@ export const searchHandbookSections = async (req, res, next) => {
     return res.json(responseBody);
   } catch (error) {
     logPublicApi(req, res, '/api/handbook-sections/search', 500, 'Failed to search handbook sections');
-    next(error);
-  }
-};
-
-// Send a test push notification to a user by userId
-export const sendTestPush = async (req, res, next) => {
-  try {
-    const { userId, title, body } = req.body;
-    if (!userId) {
-      logPublicApi(req, res, '/api/notifications/test-push', 400, 'userId is required');
-      return res.status(400).json({ message: 'userId is required' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user || !user.fcmTokens || user.fcmTokens.length === 0) {
-      logPublicApi(req, res, '/api/notifications/test-push', 404, 'User has no registered FCM tokens');
-      return res.status(404).json({ message: 'User has no registered FCM tokens' });
-    }
-
-    const admin = getFirebaseAdmin();
-    const message = {
-      data: { title: String(title || 'Test notification'), body: String(body || 'Hello from server') },
-      tokens: user.fcmTokens,
-    };
-
-    const response = await admin.messaging().sendEachForMulticast(message);
-    logPublicApi(
-      req,
-      res,
-      '/api/notifications/test-push',
-      200,
-      'Test push notification sent',
-      { successCount: response.successCount, failureCount: response.failureCount }
-    );
-    return res.json({ successCount: response.successCount, failureCount: response.failureCount, responses: response.responses });
-  } catch (error) {
-    logPublicApi(req, res, '/api/notifications/test-push', 500, 'Failed to send test push notification');
     next(error);
   }
 };

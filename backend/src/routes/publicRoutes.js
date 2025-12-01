@@ -15,7 +15,6 @@ router.get('/handbook-sections/:sectionId/file', publicController.streamHandbook
 router.get('/memorandums', publicController.getPublicMemorandums);
 router.get('/notifications', publicController.getPublicNotifications);
 router.get('/departments', publicController.getDepartmentsCatalog);
-router.post('/notifications/test-push', publicController.sendTestPush);
 router.get('/search', searchContent);
 router.get('/policies', getStudentPolicies);
 router.get('/policies/sections/:sectionId/file', streamPolicySectionFile);
