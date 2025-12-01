@@ -180,30 +180,6 @@ const Search = () => {
               />
             </div>
 
-            <div>
-              <label className='block text-sm font-semibold text-gray-700 mb-2'>Type</label>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
-              >
-                <option value='memorandum'>Memorandum</option>
-              </select>
-            </div>
-
-            <div>
-              <label className='block text-sm font-semibold text-gray-700 mb-2'>Year</label>
-              <input
-                type='number'
-                min='1900'
-                max='2999'
-                value={yearFilter}
-                onChange={(e) => setYearFilter(e.target.value)}
-                className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black'
-                placeholder='Optional'
-              />
-            </div>
-
             <div className='md:col-span-4 flex justify-end items-end'>
               <button
                 type='submit'
