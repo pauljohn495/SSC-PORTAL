@@ -110,7 +110,7 @@ const buildUserResponse = (user) => ({
   profileCompleted: typeof user.profileCompleted === 'boolean'
     ? user.profileCompleted
     : Boolean(user.department && user.course),
-  googleDriveConnected: Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken)
+  // Cloudinary doesn't require OAuth, so no connection status needed
 });
 
 // Verify reCAPTCHA token

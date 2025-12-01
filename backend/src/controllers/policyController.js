@@ -3,6 +3,7 @@ import PolicySection from '../models/PolicySection.js';
 import User from '../models/User.js';
 import { logActivity } from '../utils/activityLogger.js';
 import { savePDFToFile, deletePDFFile, readPDFFromFile } from '../utils/fileStorage.js';
+import { uploadPDFToCloudinary, deleteFileFromCloudinary, extractTextFromPDFBuffer } from '../utils/cloudinary.js';
 import { slugifyString } from '../utils/slugify.js';
 import { setApiLogHeader } from '../utils/apiLogger.js';
 
@@ -61,6 +62,7 @@ const summarizeSection = (section) => ({
   filePath: section.filePath,
   createdAt: section.createdAt,
   updatedAt: section.updatedAt,
+  updatedBy: section.updatedBy,
   approvedAt: section.approvedAt,
   rejectionReason: section.rejectionReason,
 });
@@ -72,6 +74,7 @@ export const getPresidentPolicyDepartments = async (req, res, next) => {
       .lean();
     const departmentIds = departments.map((dept) => dept._id);
     const sections = await PolicySection.find({ department: { $in: departmentIds } })
+      .populate('updatedBy', 'name email')
       .sort({ createdAt: -1 })
       .lean();
     const sectionsByDept = sections.reduce((acc, section) => {
@@ -213,9 +216,24 @@ export const deletePolicySection = async (req, res, next) => {
       return res.status(404).json({ message: 'Section not found' });
     }
 
-    if (section.filePath) {
-      deletePDFFile(section.filePath);
+    // Delete from Cloudinary if it exists
+    if (section.cloudinaryPublicId) {
+      try {
+        await deleteFileFromCloudinary(section.cloudinaryPublicId);
+      } catch (error) {
+        // Continue even if deletion fails
+      }
     }
+    
+    // Delete local file if it exists (for backward compatibility)
+    if (section.filePath) {
+      try {
+        deletePDFFile(section.filePath);
+      } catch (error) {
+        // Continue even if deletion fails
+      }
+    }
+    
     await section.deleteOne();
 
     await logActivity(user._id, 'policy_section_delete', `Deleted policy section "${section.title}"`, {
@@ -311,9 +329,24 @@ export const permanentlyDeletePolicySectionAdmin = async (req, res, next) => {
       return res.status(404).json({ message: 'Section not found' });
     }
 
-    if (section.filePath) {
-      deletePDFFile(section.filePath);
+    // Delete from Cloudinary if it exists
+    if (section.cloudinaryPublicId) {
+      try {
+        await deleteFileFromCloudinary(section.cloudinaryPublicId);
+      } catch (error) {
+        // Continue even if deletion fails
+      }
     }
+    
+    // Delete local file if it exists (for backward compatibility)
+    if (section.filePath) {
+      try {
+        deletePDFFile(section.filePath);
+      } catch (error) {
+        // Continue even if deletion fails
+      }
+    }
+    
     await section.deleteOne();
 
     await logActivity(admin._id, 'policy_section_delete_permanent', `Admin permanently deleted policy section "${section.title}"`, {
@@ -357,15 +390,55 @@ export const createPolicySection = async (req, res, next) => {
     }
 
     const sectionSlug = await ensureUniqueSlug(PolicySection, slugifyString(title, 'section'), { department: departmentId });
-    const storagePath = savePDFToFile(fileUrl, fileName || `${sectionSlug}.pdf`, POLICY_UPLOAD_DIR);
+    
+    // Convert base64 to buffer
+    let base64Content = fileUrl;
+    if (fileUrl.includes(',')) {
+      base64Content = fileUrl.split(',')[1];
+    }
+    base64Content = base64Content.trim().replace(/\s/g, '');
+    
+    let pdfBuffer;
+    try {
+      pdfBuffer = Buffer.from(base64Content, 'base64');
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        throw new Error('Failed to create buffer from base64 data');
+      }
+    } catch (bufferError) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 400, 'Failed to process PDF file');
+      return res.status(400).json({ message: 'Failed to process PDF file. Invalid file format.' });
+    }
+    
+    // Check file size before uploading (limit to 80MB)
+    const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+    if (bufferSizeMB > 80) {
+      logPolicyApi(req, res, '/api/president/policies/sections', 400, 'File size exceeds limit');
+      return res.status(400).json({ message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` });
+    }
+    
+    // Upload to Cloudinary
+    const sanitizedFileName = (fileName || `${sectionSlug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+    const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'policies');
+    
+    // Extract text content for search indexing
+    let pdfContent = '';
+    try {
+      if (bufferSizeMB <= 80) {
+        pdfContent = await extractTextFromPDFBuffer(pdfBuffer);
+      }
+    } catch (error) {
+      // Continue even if extraction fails
+    }
 
     const section = await PolicySection.create({
       department: departmentId,
       title: title.trim(),
       slug: sectionSlug,
       description,
-      filePath: storagePath,
-      fileName: fileName || `${sectionSlug}.pdf`,
+      fileName: sanitizedFileName,
+      cloudinaryPublicId: cloudinaryResult.publicId,
+      cloudinaryUrl: cloudinaryResult.previewUrl,
+      fileSize: pdfBuffer.length,
       createdBy: user._id,
       status: 'pending',
     });
@@ -399,6 +472,17 @@ export const updatePolicySection = async (req, res, next) => {
       return res.status(404).json({ message: 'Section not found' });
     }
 
+    // If another user currently holds edit priority, block this save.
+    // If priority is not set at all (e.g., legacy data or a failed priority call),
+    // allow the update so a single user is never locked out.
+    if (section.priorityEditor && section.priorityEditor.toString() !== userId) {
+      logPolicyApi(req, res, '/api/president/policies/sections/:id', 409, 'No edit priority', { id });
+      return res.status(409).json({ 
+        message: 'You do not have edit priority. Only the first user to click edit can save changes.',
+        hasPriority: false
+      });
+    }
+
     if (departmentId && departmentId !== section.department.toString()) {
       const department = await PolicyDepartment.findById(departmentId);
       if (!department) {
@@ -421,13 +505,67 @@ export const updatePolicySection = async (req, res, next) => {
     }
 
     if (fileUrl) {
-      if (section.filePath) {
-        deletePDFFile(section.filePath);
-      }
-      const newPath = savePDFToFile(fileUrl, fileName || section.fileName || `${section.slug}.pdf`, POLICY_UPLOAD_DIR);
-      section.filePath = newPath;
-      if (fileName) {
-        section.fileName = fileName;
+      // Check if it's a new file (base64) or existing URL
+      const isBase64 = fileUrl.startsWith('data:') || (!fileUrl.startsWith('http') && !fileUrl.startsWith('uploads/'));
+      
+      if (isBase64) {
+        // Delete old Cloudinary file if it exists
+        if (section.cloudinaryPublicId) {
+          try {
+            await deleteFileFromCloudinary(section.cloudinaryPublicId);
+          } catch (error) {
+            // Continue even if deletion fails
+          }
+        }
+        
+        // Delete old local file if it exists (for backward compatibility)
+        if (section.filePath) {
+          try {
+            deletePDFFile(section.filePath);
+          } catch (error) {
+            // Continue even if deletion fails
+          }
+        }
+        
+        // Convert base64 to buffer
+        let base64Content = fileUrl;
+        if (fileUrl.includes(',')) {
+          base64Content = fileUrl.split(',')[1];
+        }
+        base64Content = base64Content.trim().replace(/\s/g, '');
+        
+        let pdfBuffer;
+        try {
+          pdfBuffer = Buffer.from(base64Content, 'base64');
+          if (!pdfBuffer || pdfBuffer.length === 0) {
+            throw new Error('Failed to create buffer from base64 data');
+          }
+        } catch (bufferError) {
+          logPolicyApi(req, res, '/api/president/policies/sections/:id', 400, 'Failed to process PDF file');
+          return res.status(400).json({ message: 'Failed to process PDF file. Invalid file format.' });
+        }
+        
+        // Check file size
+        const bufferSizeMB = pdfBuffer.length / (1024 * 1024);
+        if (bufferSizeMB > 80) {
+          logPolicyApi(req, res, '/api/president/policies/sections/:id', 400, 'File size exceeds limit');
+          return res.status(400).json({ message: `PDF file is ${bufferSizeMB.toFixed(2)}MB. File size exceeds 80MB limit.` });
+        }
+        
+        // Upload to Cloudinary
+        const sanitizedFileName = (fileName || section.fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
+        const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'policies');
+        
+        section.cloudinaryPublicId = cloudinaryResult.publicId;
+        section.cloudinaryUrl = cloudinaryResult.previewUrl;
+        section.fileName = sanitizedFileName;
+        section.fileSize = pdfBuffer.length;
+        section.filePath = null; // Clear old filePath
+      } else {
+        // Existing URL - just update fileName if provided
+        if (fileName) {
+          section.fileName = fileName;
+        }
       }
     } else if (fileName) {
       section.fileName = fileName;
@@ -438,6 +576,8 @@ export const updatePolicySection = async (req, res, next) => {
     section.approvedAt = null;
     section.rejectionReason = null;
     section.updatedBy = user._id;
+    section.priorityEditor = null;
+    section.priorityEditStartedAt = null;
     await section.save();
 
     await logActivity(user._id, 'policy_section_update', `Updated policy section "${section.title}"`, {
@@ -616,9 +756,23 @@ export const streamPolicySectionFile = async (req, res, next) => {
       }
     }
 
-    if (!section.filePath) {
+    // If we have a Cloudinary URL, redirect directly to it (more efficient)
+    if (section.cloudinaryUrl && section.cloudinaryUrl.startsWith('http')) {
+      const cleanUrl = section.cloudinaryUrl.split('?')[0]; // Remove query params
+      logPolicyApi(req, res, endpoint, 302, 'Redirecting to Cloudinary', { sectionId, url: cleanUrl });
+      return res.redirect(302, cleanUrl);
+    }
+
+    // Fallback to local file for backward compatibility
+    if (!section.filePath && !section.cloudinaryUrl) {
       logPolicyApi(req, res, endpoint, 404, 'Section file not found', { sectionId });
       return res.status(404).json({ message: 'File not found' });
+    }
+    
+    if (!section.filePath) {
+      // Only Cloudinary URL exists but redirect failed somehow - return error
+      logPolicyApi(req, res, endpoint, 404, 'Section file not available', { sectionId });
+      return res.status(404).json({ message: 'File not available' });
     }
 
     const pdfBuffer = readPDFFromFile(section.filePath);
@@ -632,6 +786,106 @@ export const streamPolicySectionFile = async (req, res, next) => {
     res.send(pdfBuffer);
   } catch (error) {
     logPolicyApi(req, res, '/api/policies/sections/:sectionId/file', 500, 'Failed to stream policy section file');
+    next(error);
+  }
+};
+
+// Set priority editor for policy section
+export const setPolicySectionPriority = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await ensureUserRole(userId, ['president']);
+
+    const section = await PolicySection.findById(id);
+    if (!section) {
+      logPolicyApi(req, res, `/api/president/policies/sections/${id}/priority`, 404, 'Section not found', { id });
+      return res.status(404).json({ message: 'Section not found', hasPriority: false });
+    }
+
+    if (!section.priorityEditor) {
+      section.priorityEditor = userId;
+      section.priorityEditStartedAt = new Date();
+      await section.save();
+      
+      logPolicyApi(req, res, `/api/president/policies/sections/${id}/priority`, 200, 'Edit priority granted', { id });
+      return res.status(200).json({ 
+        message: 'You have edit priority', 
+        section,
+        hasPriority: true
+      });
+    }
+
+    if (section.priorityEditor.toString() === userId) {
+      logPolicyApi(req, res, `/api/president/policies/sections/${id}/priority`, 200, 'Already has edit priority', { id });
+      return res.status(200).json({ 
+        message: 'You already have edit priority', 
+        section,
+        hasPriority: true
+      });
+    }
+
+    // Check if priority has expired (30 minutes)
+    const priorityAge = Date.now() - new Date(section.priorityEditStartedAt).getTime();
+    const PRIORITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+    if (priorityAge > PRIORITY_TIMEOUT) {
+      section.priorityEditor = userId;
+      section.priorityEditStartedAt = new Date();
+      await section.save();
+      
+      logPolicyApi(req, res, `/api/president/policies/sections/${id}/priority`, 200, 'Edit priority expired, new priority granted', { id });
+      return res.status(200).json({ 
+        message: 'Previous edit priority expired. You now have edit priority.', 
+        section,
+        hasPriority: true
+      });
+    }
+
+    logPolicyApi(req, res, `/api/president/policies/sections/${id}/priority`, 200, 'Edit priority denied', { id });
+    return res.status(200).json({ 
+      message: 'Someone else is currently editing this section', 
+      hasPriority: false
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      logPolicyApi(req, res, `/api/president/policies/sections/${req.params.id}/priority`, error.statusCode, error.message, { id: req.params.id });
+      return res.status(error.statusCode).json({ message: error.message, hasPriority: false });
+    }
+    logPolicyApi(req, res, `/api/president/policies/sections/${req.params.id}/priority`, 500, 'Failed to set edit priority', { id: req.params.id });
+    next(error);
+  }
+};
+
+// Clear priority editor for policy section
+export const clearPolicySectionPriority = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+
+    const user = await ensureUserRole(userId, ['president']);
+
+    const section = await PolicySection.findById(id);
+    if (!section) {
+      logPolicyApi(req, res, `/api/president/policies/sections/${id}/clear-priority`, 404, 'Section not found', { id });
+      return res.status(404).json({ message: 'Section not found' });
+    }
+
+    if (section.priorityEditor && section.priorityEditor.toString() === userId) {
+      section.priorityEditor = null;
+      section.priorityEditStartedAt = null;
+      await section.save();
+    }
+
+    logPolicyApi(req, res, `/api/president/policies/sections/${id}/clear-priority`, 200, 'Priority cleared', { id });
+    return res.status(200).json({ message: 'Priority cleared' });
+  } catch (error) {
+    if (error.statusCode) {
+      logPolicyApi(req, res, `/api/president/policies/sections/${req.params.id}/clear-priority`, error.statusCode, error.message, { id: req.params.id });
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    logPolicyApi(req, res, `/api/president/policies/sections/${req.params.id}/clear-priority`, 500, 'Failed to clear edit priority', { id: req.params.id });
     next(error);
   }
 };

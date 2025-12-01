@@ -20,7 +20,7 @@ import { sendPushToAllUsers } from '../utils/push.js';
 import { emitGlobal } from '../realtime/socket.js';
 import { removeFromAlgolia, saveHandbookToAlgolia, saveMemorandumToAlgolia } from '../services/algoliaService.js';
 import { deletePDFFile } from '../utils/fileStorage.js';
-import { deleteFileFromDrive } from '../utils/googleDrive.js';
+import { deleteFileFromCloudinary } from '../utils/cloudinary.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -931,12 +931,11 @@ export const permanentlyDeleteHandbook = async (req, res, next) => {
       }
     }
 
-    if (handbook.googleDriveFileId && handbook.createdBy) {
+    if (handbook.cloudinaryPublicId) {
       try {
-        const { deleteFileFromDrive } = await import('../utils/googleDrive.js');
-        await deleteFileFromDrive(handbook.googleDriveFileId, handbook.createdBy.toString());
+        await deleteFileFromCloudinary(handbook.cloudinaryPublicId);
       } catch (error) {
-        console.warn(`Could not delete Google Drive file ${handbook.googleDriveFileId}:`, error.message);
+        console.warn(`Could not delete Cloudinary file ${handbook.cloudinaryPublicId}:`, error.message);
       }
     }
 
@@ -1158,8 +1157,8 @@ export const permanentlyDeleteHandbookSectionAdmin = async (req, res, next) => {
       return res.status(404).json(response);
     }
 
-    if (section.googleDriveFileId) {
-      await deleteFileFromDrive(section.googleDriveFileId, adminId);
+    if (section.cloudinaryPublicId) {
+      await deleteFileFromCloudinary(section.cloudinaryPublicId);
     } else if (section.fileUrl && !section.fileUrl.startsWith('http')) {
       deletePDFFile(section.fileUrl);
     }

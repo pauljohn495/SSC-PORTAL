@@ -6,9 +6,9 @@ const handbookSchema = new mongoose.Schema({
   fileName: { type: String, default: '' },
   pdfContent: { type: String, default: '' }, // Extracted text content from PDF
   pageNumber: { type: Number }, // Optional, kept for backward compatibility with old handbooks
-  // Google Drive fields
-  googleDriveFileId: { type: String }, // Google Drive file ID
-  googleDrivePreviewUrl: { type: String }, // Google Drive preview URL for PDF viewer
+  // Cloudinary fields
+  cloudinaryPublicId: { type: String }, // Cloudinary public ID
+  cloudinaryUrl: { type: String }, // Cloudinary URL for PDF viewer
   status: { type: String, enum: ['draft', 'approved', 'rejected'], default: 'draft' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   createdAt: { type: Date, default: Date.now },

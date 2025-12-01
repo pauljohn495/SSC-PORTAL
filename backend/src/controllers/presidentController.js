@@ -115,169 +115,7 @@ const logAndSetHeader = (req, res, method, endpoint, status, responseData) => {
   return logData;
 };
 
-// Helper function to get OAuth2 client for Google Drive
-// Uses a different redirect URI to distinguish from Calendar OAuth
-const getDriveOAuth2Client = (tokens) => {
-  // Construct Drive-specific redirect URI
-  // If redirectUri is like http://localhost:5001/api/president/calendar/oauth/callback
-  // Change it to http://localhost:5001/api/president/drive/oauth/callback
-  let driveRedirectUri = config.google.redirectUri;
-  if (driveRedirectUri.includes('/calendar/oauth/callback')) {
-    driveRedirectUri = driveRedirectUri.replace('/calendar/oauth/callback', '/drive/oauth/callback');
-  } else if (driveRedirectUri.includes('/oauth/callback')) {
-    // If it's a generic callback, replace with drive-specific
-    driveRedirectUri = driveRedirectUri.replace('/oauth/callback', '/drive/oauth/callback');
-  } else {
-    // Fallback: append drive path
-    const baseUrl = driveRedirectUri.split('/oauth')[0] || driveRedirectUri;
-    driveRedirectUri = `${baseUrl}/drive/oauth/callback`;
-  }
-  
-  const oAuth2Client = new google.auth.OAuth2(
-    config.google.clientId,
-    config.google.clientSecret,
-    driveRedirectUri
-  );
-  if (tokens) {
-    oAuth2Client.setCredentials(tokens);
-  }
-  return oAuth2Client;
-};
-
-// Get Google Drive OAuth authorization URL
-export const getDriveAuthUrl = async (req, res, next) => {
-  try {
-    const { userId } = req.query;
-    
-    if (!userId) {
-      const response = { message: 'User ID is required' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 400, response);
-      return res.status(400).json(response);
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      const response = { message: 'User not found' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 404, response);
-      return res.status(404).json(response);
-    }
-
-    if (user.role !== 'president') {
-      const response = { message: 'Only presidents can connect Google Drive' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 403, response);
-      return res.status(403).json(response);
-    }
-
-    const oAuth2Client = getDriveOAuth2Client();
-    const scopes = [
-      'https://www.googleapis.com/auth/drive.file', // Access to files created by this app
-    ];
-    const state = encodeURIComponent(JSON.stringify({ userId }));
-    const authUrl = oAuth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: scopes,
-      prompt: 'consent',
-      state
-    });
-
-    const response = { url: authUrl };
-    logAndSetHeader(req, res, 'GET', '/api/president/drive/auth-url', 200, response);
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Handle Google Drive OAuth callback
-export const driveOAuthCallback = async (req, res, next) => {
-  try {
-    const { code, state } = req.query;
-    const { userId } = JSON.parse(decodeURIComponent(state || '{}'));
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      const response = { message: 'User not found' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 404, response);
-      return res.status(404).send(response.message);
-    }
-
-    if (user.role !== 'president') {
-      const response = { message: 'Forbidden' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 403, response);
-      return res.status(403).send(response.message);
-    }
-
-    const oAuth2Client = getDriveOAuth2Client();
-    const { tokens } = await oAuth2Client.getToken(code);
-
-    user.googleDrive = {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token || user.googleDrive?.refreshToken,
-      scope: tokens.scope,
-      tokenType: tokens.token_type,
-      expiryDate: tokens.expiry_date
-    };
-    await user.save();
-
-    const response = { message: 'Google Drive connected successfully! You can close this window.' };
-    logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 200, response);
-    res.send(
-      `<html>
-        <body>
-          <h2>${response.message}</h2>
-          <script>
-            (function() {
-              try {
-                if (window.opener && typeof window.opener.postMessage === 'function') {
-                  window.opener.postMessage('google-drive-connected', '*');
-                }
-              } catch (err) {
-                console.error('Failed to notify opener about Drive connection:', err);
-              }
-              setTimeout(function() { window.close(); }, 2000);
-            })();
-          </script>
-        </body>
-      </html>`
-    );
-  } catch (error) {
-    const response = { message: `OAuth error: ${error.message}` };
-    logAndSetHeader(req, res, 'GET', '/api/president/drive/oauth/callback', 400, response);
-    res.status(400).send(response.message);
-  }
-};
-
-export const getDriveConnectionStatus = async (req, res, next) => {
-  try {
-    const { userId } = req.query;
-
-    if (!userId) {
-      const response = { message: 'User ID is required' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 400, response);
-      return res.status(400).json(response);
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      const response = { message: 'User not found' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 404, response);
-      return res.status(404).json(response);
-    }
-
-    if (user.role !== 'president') {
-      const response = { message: 'Forbidden' };
-      logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 403, response);
-      return res.status(403).json(response);
-    }
-
-    const connected = Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken);
-    const response = { connected };
-    logAndSetHeader(req, res, 'GET', '/api/president/drive/status', 200, response);
-    res.json(response);
-  } catch (error) {
-    next(error);
-  }
-};
+// Google Drive OAuth endpoints removed - using Cloudinary instead (no OAuth needed)
 
 // Upload memorandum
 export const uploadMemorandum = async (req, res, next) => {
@@ -304,9 +142,8 @@ export const uploadMemorandum = async (req, res, next) => {
       return res.status(403).json(response);
     }
 
-    // Upload PDF to Google Drive
-    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-    const { config } = await import('../config/index.js');
+    // Upload PDF to Cloudinary
+    const { uploadPDFToCloudinary, extractTextFromPDFBuffer } = await import('../utils/cloudinary.js');
     
     let base64Content = fileUrl;
     if (fileUrl.includes(',')) {
@@ -333,10 +170,9 @@ export const uploadMemorandum = async (req, res, next) => {
       return res.status(400).json(response);
     }
     
-    // Upload to Google Drive
+    // Upload to Cloudinary
     const sanitizedFileName = (fileName || `${title}_${year}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const driveFolderId = config.google.driveFolderId || null;
-    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'memorandums');
     
     // Extract text content for search indexing
     let pdfContent = '';
@@ -352,7 +188,7 @@ export const uploadMemorandum = async (req, res, next) => {
     const memorandum = new Memorandum({ 
       title, 
       year, 
-      fileUrl: driveResult.previewUrl, // Store Google Drive preview URL
+      fileUrl: cloudinaryResult.previewUrl, // Store Cloudinary preview URL
       fileName: sanitizedFileName, 
       pdfContent,
       createdBy: userId 
@@ -485,13 +321,12 @@ export const updateMemorandum = async (req, res, next) => {
     memorandum.title = title;
     memorandum.year = year;
     
-    // Check if it's a new file (base64) or existing Google Drive URL
+    // Check if it's a new file (base64) or existing Cloudinary URL
     const isBase64 = fileUrl && (fileUrl.startsWith('data:') || (!fileUrl.startsWith('http') && !fileUrl.startsWith('uploads/')));
     
     if (isBase64 && fileUrl !== oldFileUrl) {
-      // New file upload - upload to Google Drive
-      const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-      const { config } = await import('../config/index.js');
+      // New file upload - upload to Cloudinary
+      const { uploadPDFToCloudinary, deleteFileFromCloudinary, extractTextFromPDFBuffer } = await import('../utils/cloudinary.js');
       
       let base64Data = fileUrl;
       if (fileUrl.includes(',')) {
@@ -518,25 +353,27 @@ export const updateMemorandum = async (req, res, next) => {
         return res.status(400).json(response);
       }
       
-      // Delete old file from Google Drive if it exists (extract fileId from old URL)
-      // Old URL format: https://drive.google.com/file/d/FILE_ID/preview
-      if (oldFileUrl && oldFileUrl.includes('drive.google.com')) {
-        const fileIdMatch = oldFileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-        if (fileIdMatch && fileIdMatch[1]) {
-          try {
-            await deleteFileFromDrive(fileIdMatch[1], userId);
-          } catch (error) {
-            console.warn('Failed to delete old Google Drive file:', error.message);
+      // Delete old file from Cloudinary if it exists (extract publicId from old URL)
+      // Old URL format: https://res.cloudinary.com/.../publicId.pdf
+      if (oldFileUrl && oldFileUrl.includes('cloudinary.com')) {
+        try {
+          // Extract public ID from Cloudinary URL
+          const urlParts = oldFileUrl.split('/');
+          const fileNamePart = urlParts[urlParts.length - 1];
+          const publicId = fileNamePart.replace(/\.pdf$/i, '');
+          if (publicId) {
+            await deleteFileFromCloudinary(publicId);
           }
+        } catch (error) {
+          console.warn('Failed to delete old Cloudinary file:', error.message);
         }
       }
       
-      // Upload new file to Google Drive
+      // Upload new file to Cloudinary
       const sanitizedFileName = (fileName || `${title}_${year}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-      const driveFolderId = config.google.driveFolderId || null;
-      const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+      const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'memorandums');
       
-      memorandum.fileUrl = driveResult.previewUrl;
+      memorandum.fileUrl = cloudinaryResult.previewUrl;
       memorandum.fileName = sanitizedFileName;
       
       // Extract text from PDF
@@ -549,7 +386,7 @@ export const updateMemorandum = async (req, res, next) => {
         // Keep existing content if extraction fails
       }
     } else if (fileUrl) {
-      // Existing Google Drive URL - just update if different
+      // Existing Cloudinary URL - just update if different
       memorandum.fileUrl = fileUrl;
       if (fileName !== undefined) {
         memorandum.fileName = fileName || '';
@@ -661,15 +498,15 @@ export const createHandbook = async (req, res, next) => {
     // Check if there's already an approved handbook - delete old ones first
     const existingApproved = await Handbook.find({ status: 'approved' });
     if (existingApproved.length > 0) {
-      // Delete old Google Drive files (handle errors gracefully)
-      const { deleteFileFromDrive } = await import('../utils/googleDrive.js');
+      // Delete old Cloudinary files (handle errors gracefully)
+      const { deleteFileFromCloudinary } = await import('../utils/cloudinary.js');
       for (const oldHandbook of existingApproved) {
-        if (oldHandbook.googleDriveFileId) {
+        if (oldHandbook.cloudinaryPublicId) {
           try {
-            await deleteFileFromDrive(oldHandbook.googleDriveFileId, userId);
+            await deleteFileFromCloudinary(oldHandbook.cloudinaryPublicId);
           } catch (error) {
             // Log but continue - file might not exist or deletion might fail
-            console.warn(`Could not delete Google Drive file ${oldHandbook.googleDriveFileId}:`, error.message);
+            console.warn(`Could not delete Cloudinary file ${oldHandbook.cloudinaryPublicId}:`, error.message);
           }
         }
         // Also handle old file system files for backward compatibility
@@ -717,15 +554,13 @@ export const createHandbook = async (req, res, next) => {
       return res.status(400).json(response);
     }
 
-    // Upload whole PDF to Google Drive
-    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-    const { config } = await import('../config/index.js');
+    // Upload whole PDF to Cloudinary
+    const { uploadPDFToCloudinary, extractTextFromPDFBuffer } = await import('../utils/cloudinary.js');
     
     const sanitizedFileName = (fileName || 'handbook.pdf').replace(/[^a-zA-Z0-9.-]/g, '_');
-    const driveFolderId = config.google.driveFolderId || null;
     
-    console.log('Uploading PDF to Google Drive...');
-    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    console.log('Uploading PDF to Cloudinary...');
+    const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'handbooks');
     
     // Extract text content from PDF for search indexing
     // For large files, this may fail, so we make it optional
@@ -747,26 +582,26 @@ export const createHandbook = async (req, res, next) => {
     // Create single Handbook entry for the whole PDF
     const handbook = new Handbook({
       fileName: sanitizedFileName,
-      googleDriveFileId: driveResult.fileId,
-      googleDrivePreviewUrl: driveResult.previewUrl,
+      cloudinaryPublicId: cloudinaryResult.publicId,
+      cloudinaryUrl: cloudinaryResult.previewUrl,
       pdfContent: pdfContent,
       createdBy: userId
     });
     await handbook.save();
 
-    await logActivity(userId, 'handbook_create', `Handbook created and uploaded to Google Drive: ${sanitizedFileName}`, { 
+    await logActivity(userId, 'handbook_create', `Handbook created and uploaded to Cloudinary: ${sanitizedFileName}`, { 
       fileName: sanitizedFileName,
-      googleDriveFileId: driveResult.fileId
+      cloudinaryPublicId: cloudinaryResult.publicId
     }, req);
 
     // Return summary
     const response = { 
-      message: 'Handbook draft created and uploaded to Google Drive', 
+      message: 'Handbook draft created and uploaded to Cloudinary', 
       handbook: {
         _id: handbook._id,
         fileName: handbook.fileName,
-        googleDriveFileId: handbook.googleDriveFileId,
-        googleDrivePreviewUrl: handbook.googleDrivePreviewUrl,
+        cloudinaryPublicId: handbook.cloudinaryPublicId,
+        cloudinaryUrl: handbook.cloudinaryUrl,
         status: handbook.status,
         createdAt: handbook.createdAt
       }
@@ -1029,24 +864,11 @@ export const createHandbookSection = async (req, res, next) => {
       return res.status(400).json(response);
     }
     
-    // Check if Google Drive is connected before attempting upload
-    const driveConnected = Boolean(user.googleDrive?.refreshToken || user.googleDrive?.accessToken);
-    if (!driveConnected) {
-      const response = { 
-        message: 'Google Drive is not connected. Please connect your Google Drive account first before uploading files.',
-        driveNotConnected: true
-      };
-      logAndSetHeader(req, res, 'POST', '/api/president/handbook-sections', 400, response);
-      return res.status(400).json(response);
-    }
-    
-    // Upload to Google Drive
-    const { uploadPDFToDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-    const { config } = await import('../config/index.js');
+    // Upload to Cloudinary
+    const { uploadPDFToCloudinary, extractTextFromPDFBuffer } = await import('../utils/cloudinary.js');
     const sanitizedFileName = (fileName || `${slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const driveFolderId = config.google.driveFolderId || null;
     
-    const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+    const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'handbook-sections');
     
     // Extract text content - make it optional for large files
     let pdfContent = '';
@@ -1067,10 +889,10 @@ export const createHandbookSection = async (req, res, next) => {
       order: parseOrderValue(order, 0),
       published: false,
       slug,
-      fileUrl: driveResult.previewUrl, // Store Google Drive preview URL
+      fileUrl: cloudinaryResult.previewUrl, // Store Cloudinary preview URL
       fileName: sanitizedFileName,
-      googleDriveFileId: driveResult.fileId,
-      googleDrivePreviewUrl: driveResult.previewUrl,
+      cloudinaryPublicId: cloudinaryResult.publicId,
+      cloudinaryUrl: cloudinaryResult.previewUrl,
       pdfContent,
       createdBy: userId,
       status: 'pending'
@@ -1163,9 +985,8 @@ export const updateHandbookSection = async (req, res, next) => {
       const isBase64 = fileUrl.startsWith('data:') || (!fileUrl.startsWith('http') && !fileUrl.startsWith('uploads/'));
       
       if (isBase64) {
-        // New file upload - upload to Google Drive
-        const { uploadPDFToDrive, deleteFileFromDrive, extractTextFromPDFBuffer } = await import('../utils/googleDrive.js');
-        const { config } = await import('../config/index.js');
+        // New file upload - upload to Cloudinary
+        const { uploadPDFToCloudinary, deleteFileFromCloudinary, extractTextFromPDFBuffer } = await import('../utils/cloudinary.js');
         
         let base64Data = fileUrl;
         if (fileUrl.includes(',')) {
@@ -1193,24 +1014,23 @@ export const updateHandbookSection = async (req, res, next) => {
           return res.status(400).json(response);
         }
         
-        // Delete old file from Google Drive if it exists
-        if (section.googleDriveFileId) {
+        // Delete old file from Cloudinary if it exists
+        if (section.cloudinaryPublicId) {
           try {
-            await deleteFileFromDrive(section.googleDriveFileId, userId);
+            await deleteFileFromCloudinary(section.cloudinaryPublicId);
           } catch (error) {
-            console.warn('Failed to delete old Google Drive file:', error.message);
+            console.warn('Failed to delete old Cloudinary file:', error.message);
           }
         }
         
-        // Upload new file to Google Drive
+        // Upload new file to Cloudinary
         const sanitizedFileName = (fileName || `${section.slug}.pdf`).replace(/[^a-zA-Z0-9.-]/g, '_');
-        const driveFolderId = config.google.driveFolderId || null;
-        const driveResult = await uploadPDFToDrive(pdfBuffer, sanitizedFileName, userId, driveFolderId);
+        const cloudinaryResult = await uploadPDFToCloudinary(pdfBuffer, sanitizedFileName, 'handbook-sections');
         
-        section.fileUrl = driveResult.previewUrl;
+        section.fileUrl = cloudinaryResult.previewUrl;
         section.fileName = sanitizedFileName;
-        section.googleDriveFileId = driveResult.fileId;
-        section.googleDrivePreviewUrl = driveResult.previewUrl;
+        section.cloudinaryPublicId = cloudinaryResult.publicId;
+        section.cloudinaryUrl = cloudinaryResult.previewUrl;
         
         // Extract text content - make it optional for large files
         try {
@@ -1225,7 +1045,7 @@ export const updateHandbookSection = async (req, res, next) => {
           section.pdfContent = section.pdfContent || '';
         }
       } else {
-        // Existing Google Drive URL or file path - just update fileName if provided
+        // Existing Cloudinary URL or file path - just update fileName if provided
         if (fileName) {
           section.fileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
         }

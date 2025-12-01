@@ -13,6 +13,10 @@ const PresidentPolicy = () => {
   const [sectionModalOpen, setSectionModalOpen] = useState(false)
   const [sectionForm, setSectionForm] = useState({ departmentId: '', title: '', description: '' })
   const [sectionFile, setSectionFile] = useState(null)
+  const [editingSection, setEditingSection] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [hasPriority, setHasPriority] = useState(false)
+  const [priorityError, setPriorityError] = useState('')
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -101,41 +105,218 @@ const PresidentPolicy = () => {
     }
   }
 
+  const openSectionModal = async (section = null, departmentId = null) => {
+    if (section) {
+      // Try to get edit priority
+      try {
+        const priorityResponse = await fetch(`/api/president/policies/sections/${section._id}/priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+
+        let priorityData = {};
+        try {
+          priorityData = await priorityResponse.json();
+        } catch {
+          priorityData = {};
+        }
+
+        // Always open the modal
+        setEditingSection(section);
+        setSectionForm({
+          departmentId: departmentId || '',
+          title: section.title || '',
+          description: section.description || ''
+        });
+        setSectionFile(null);
+        setMessage('');
+        setMessageType('');
+        setSectionModalOpen(true);
+
+        // If the request itself failed, user can still view but cannot save
+        if (!priorityResponse.ok) {
+          setHasPriority(false);
+          setPriorityError(priorityData.message || 'Someone else is currently editing this section. You can view but cannot save changes.');
+          return;
+        }
+
+        // If the server did not return a clear boolean hasPriority flag,
+        // treat it as "no priority" to avoid two users editing at once.
+        if (typeof priorityData.hasPriority !== 'boolean') {
+          setHasPriority(false);
+          setPriorityError('Unable to determine edit priority. You can view but cannot save changes.');
+          return;
+        }
+
+        if (priorityData.hasPriority) {
+          // User has priority
+          setHasPriority(true);
+          setPriorityError('');
+        } else {
+          // Another user already has edit priority - user can view but cannot save
+          setHasPriority(false);
+          setPriorityError('Someone else is currently editing this section. You can view but cannot save changes.');
+        }
+      } catch (error) {
+        console.error('Error getting edit priority:', error);
+        // Still open the modal but without save ability
+        setEditingSection(section);
+        setSectionForm({
+          departmentId: departmentId || '',
+          title: section.title || '',
+          description: section.description || ''
+        });
+        setSectionFile(null);
+        setMessage('');
+        setMessageType('');
+        setSectionModalOpen(true);
+        setHasPriority(false);
+        setPriorityError('Failed to get edit priority. You can view but cannot save changes.');
+      }
+    } else {
+      setEditingSection(null);
+      setSectionForm({ departmentId: '', title: '', description: '' });
+      setSectionFile(null);
+      setMessage('');
+      setMessageType('');
+      setHasPriority(true); // New sections always have priority
+      setPriorityError('');
+      setSectionModalOpen(true);
+    }
+  }
+
+  const closeSectionModal = async () => {
+    // Clear priority if we have it
+    if (hasPriority && editingSection) {
+      try {
+        await fetch(`/api/president/policies/sections/${editingSection._id}/clear-priority`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user._id })
+        });
+      } catch (error) {
+        console.error('Error clearing section priority:', error);
+      }
+    }
+
+    setSectionModalOpen(false);
+    setEditingSection(null);
+    setSectionForm({ departmentId: '', title: '', description: '' });
+    setSectionFile(null);
+    setMessage('');
+    setMessageType('');
+    setHasPriority(false);
+    setPriorityError('');
+  }
+
   const submitSection = async (event) => {
     event.preventDefault()
-    if (!sectionForm.departmentId || !sectionForm.title.trim() || !sectionFile) {
-      setMessage('Department, title, and PDF are required')
-      setMessageType('error')
-      return
-    }
-    try {
-      const base64 = await fileToBase64(sectionFile)
-      const response = await fetch('/api/president/policies/sections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    
+    if (editingSection) {
+      // Update existing section
+      if (!sectionForm.departmentId || !sectionForm.title.trim()) {
+        setMessage('Department and title are required')
+        setMessageType('error')
+        return
+      }
+      
+      try {
+        setSubmitting(true)
+        setMessage('')
+        
+        const payload = {
           departmentId: sectionForm.departmentId,
           title: sectionForm.title,
           description: sectionForm.description,
-          fileUrl: base64,
-          fileName: sectionFile.name,
           userId: user._id
+        }
+        
+        // Only include file if a new one is uploaded
+        if (sectionFile) {
+          payload.fileUrl = await fileToBase64(sectionFile)
+          payload.fileName = sectionFile.name
+        }
+        
+        const response = await fetch(`/api/president/policies/sections/${editingSection._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         })
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to create section')
+        
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          // If the backend says we no longer have edit priority, show "Failed to Update" and close modal
+          if (response.status === 409 && (data.hasPriority === false || data.message?.includes('edit priority'))) {
+            setHasPriority(false);
+            setPriorityError(data.message || 'You no longer have edit priority for this document.');
+            setMessage('Your changes will not be saved');
+            setMessageType('error');
+            // Close modal after showing error
+            setTimeout(() => {
+              closeSectionModal();
+              fetchDepartments();
+            }, 1500);
+            return;
+          }
+          setMessage(data.message || 'Failed to update section');
+          setMessageType('error');
+          return;
+        }
+        
+        closeSectionModal()
+        fetchDepartments()
+        setMessage('Section updated successfully. Waiting for admin approval.')
+        setMessageType('success')
+      } catch (error) {
+        console.error('Error updating section:', error)
+        setMessage(error.message || 'Failed to update section')
+        setMessageType('error')
+      } finally {
+        setSubmitting(false)
       }
-      setSectionModalOpen(false)
-      setSectionForm({ departmentId: '', title: '', description: '' })
-      setSectionFile(null)
-      fetchDepartments()
-      setMessage('Section submitted for approval')
-      setMessageType('success')
-    } catch (error) {
-      console.error('Error creating section:', error)
-      setMessage(error.message || 'Failed to create section')
-      setMessageType('error')
+    } else {
+      // Create new section
+      if (!sectionForm.departmentId || !sectionForm.title.trim() || !sectionFile) {
+        setMessage('Department, title, and PDF are required')
+        setMessageType('error')
+        return
+      }
+      
+      try {
+        setSubmitting(true)
+        setMessage('')
+        
+        const base64 = await fileToBase64(sectionFile)
+        const response = await fetch('/api/president/policies/sections', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            departmentId: sectionForm.departmentId,
+            title: sectionForm.title,
+            description: sectionForm.description,
+            fileUrl: base64,
+            fileName: sectionFile.name,
+            userId: user._id
+          })
+        })
+        
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to create section')
+        }
+        
+        closeSectionModal()
+        fetchDepartments()
+        setMessage('Section submitted for approval')
+        setMessageType('success')
+      } catch (error) {
+        console.error('Error creating section:', error)
+        setMessage(error.message || 'Failed to create section')
+        setMessageType('error')
+      } finally {
+        setSubmitting(false)
+      }
     }
   }
 
@@ -218,7 +399,7 @@ const PresidentPolicy = () => {
                 Create College
               </button>
               <button
-                onClick={() => setSectionModalOpen(true)}
+                onClick={() => openSectionModal(null)}
                 className='px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition text-sm font-semibold min-h-[44px]'
               >
                 Create Section
@@ -252,10 +433,16 @@ const PresidentPolicy = () => {
                     {department.sections && department.sections.length > 0 ? (
                       department.sections.map((section) => (
                         <div key={section._id} className='border border-gray-200 rounded-lg p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3'>
-                          <div>
+                          <div className='flex-1'>
                             <p className='font-semibold text-gray-800'>{section.title}</p>
                             {section.description && (
                               <p className='text-sm text-gray-600'>{section.description}</p>
+                            )}
+                            {section.updatedBy && section.updatedAt && (
+                              <p className='text-xs text-gray-400 mt-1'>
+                                Last edited: {new Date(section.updatedAt).toLocaleString()}
+                                {section.updatedBy.name && ` by ${section.updatedBy.name}`}
+                              </p>
                             )}
                           </div>
                           <div className='flex items-center gap-2'>
@@ -268,6 +455,15 @@ const PresidentPolicy = () => {
                             }`}>
                               {section.status.toUpperCase()}
                             </span>
+                            <button
+                              onClick={() => openSectionModal(section, department._id)}
+                              className='text-blue-600 hover:text-blue-800 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center'
+                              title='Edit'
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
                       ))
@@ -328,7 +524,22 @@ const PresidentPolicy = () => {
       {sectionModalOpen && (
         <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4'>
           <div className='bg-white text-black rounded-lg shadow-xl w-full max-w-lg p-4 sm:p-6 max-h-[90vh] overflow-y-auto'>
-            <h3 className='text-xl font-semibold text-blue-950 mb-4'>Create Section</h3>
+            <h3 className='text-xl font-semibold text-blue-950 mb-4'>
+              {editingSection ? 'Edit Section' : 'Create Section'}
+            </h3>
+
+            {editingSection && !hasPriority && (
+              <div className='mb-4 p-3 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200'>
+                ⚠️ {priorityError || 'Someone else is currently editing this section. You can view but cannot save changes.'}
+              </div>
+            )}
+
+            {editingSection && hasPriority && (
+              <div className='mb-4 p-3 rounded-lg bg-green-50 text-green-800 border border-green-200'>
+                ✅ You have edit priority - your changes will be saved
+              </div>
+            )}
+
             <form className='space-y-4' onSubmit={submitSection}>
               <div>
                 <label className='text-sm font-semibold text-black block mb-1'>College</label>
@@ -367,18 +578,53 @@ const PresidentPolicy = () => {
                 />
               </div>
               <div>
-                <label className='text-sm font-semibold text-black block mb-1'>Policy PDF</label>
+                <label className='text-sm font-semibold text-black block mb-1'>
+                  Policy PDF {editingSection ? '(Optional - leave empty to keep current file)' : ''}
+                </label>
                 <input
                   type='file'
                   accept='application/pdf'
                   onChange={(event) => setSectionFile(event.target.files[0] || null)}
-                  required
+                  required={!editingSection}
                   className='w-full'
                 />
+                {editingSection && (
+                  <p className='text-xs text-gray-500 mt-1'>
+                    Current file: {editingSection.fileName || 'No file'}
+                  </p>
+                )}
               </div>
+              {message && (
+                <div className={`rounded-lg px-4 py-3 text-sm ${
+                  messageType === 'error' 
+                    ? 'bg-red-50 text-red-700 border border-red-200' 
+                    : 'bg-green-50 text-green-700 border border-green-200'
+                }`}>
+                  {message}
+                </div>
+              )}
               <div className='flex justify-end gap-2'>
-                <button type='button' className='px-4 py-2 text-sm rounded-lg border border-gray-300' onClick={() => setSectionModalOpen(false)}>Cancel</button>
-                <button type='submit' className='px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700'>Submit</button>
+                <button 
+                  type='button' 
+                  className='px-4 py-2 text-sm rounded-lg border border-gray-300' 
+                  onClick={closeSectionModal}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type='submit'
+                  disabled={submitting}
+                  className={`px-4 py-2 text-sm rounded-lg font-semibold transition-colors ${
+                    submitting
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {submitting 
+                    ? (editingSection ? 'Updating...' : 'Creating...') 
+                    : (editingSection ? 'Update' : 'Submit')}
+                </button>
               </div>
             </form>
           </div>

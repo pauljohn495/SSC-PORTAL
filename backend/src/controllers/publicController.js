@@ -7,7 +7,7 @@ import { getFirebaseAdmin } from '../config/firebaseAdmin.js';
 import User from '../models/User.js';
 import { readPDFFromFile } from '../utils/fileStorage.js';
 import { PDFDocument } from 'pdf-lib';
-import { downloadFileFromDrive } from '../utils/googleDrive.js';
+import { downloadFileFromCloudinary } from '../utils/cloudinary.js';
 import { logActivity } from '../utils/activityLogger.js';
 import { setApiLogHeader } from '../utils/apiLogger.js';
 
@@ -481,40 +481,46 @@ export const streamHandbookFile = async (req, res, next) => {
       return res.status(403).json({ message: 'Handbook is not available' });
     }
 
+    // If we have a Cloudinary URL, redirect directly to it (more efficient and avoids auth issues)
+    if (handbook.cloudinaryUrl && handbook.cloudinaryUrl.startsWith('http')) {
+      const cleanUrl = handbook.cloudinaryUrl.split('?')[0]; // Remove query params
+      logPublicApi(req, res, endpoint, 302, 'Redirecting to Cloudinary', { handbookId, url: cleanUrl });
+      return res.redirect(302, cleanUrl);
+    }
+
     let pdfBuffer = null;
 
     const fallbackFileName = handbook.fileName || 'student-handbook.pdf';
 
-    if (handbook.googleDriveFileId) {
-      // For Google Drive files, use the direct download URL
-      // Try export=download first, then fallback to export=view
-      const downloadUrls = [
-        `https://drive.google.com/uc?export=download&id=${handbook.googleDriveFileId}`,
-        `https://drive.google.com/uc?export=view&id=${handbook.googleDriveFileId}`
-      ];
-      
-      for (const downloadUrl of downloadUrls) {
-        try {
-          pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
-          break; // Success, exit loop
-        } catch (error) {
-          console.warn(`Failed to download from ${downloadUrl}:`, error.message);
-          // Continue to next URL
-        }
-      }
-      
-      if (!pdfBuffer) {
-        console.error(`Failed to download PDF from Google Drive for handbook ${handbookId}`);
+    // Try Cloudinary URL first (most reliable - it's the full URL)
+    if (handbook.cloudinaryUrl && handbook.cloudinaryUrl.startsWith('http')) {
+      try {
+        pdfBuffer = await fetchPdfBufferFromUrl(handbook.cloudinaryUrl);
+      } catch (error) {
+        console.warn(`Failed to download handbook ${handbookId} from Cloudinary URL:`, error.message);
       }
     }
     
-    // If we still don't have a buffer, try fileUrl
+    // Fallback to publicId if cloudinaryUrl didn't work
+    if (!pdfBuffer && handbook.cloudinaryPublicId) {
+      try {
+        pdfBuffer = await downloadFileFromCloudinary(handbook.cloudinaryPublicId);
+      } catch (error) {
+        console.warn(`Failed to download handbook ${handbookId} from Cloudinary using publicId:`, error.message);
+      }
+    }
+    
+    // Final fallback to fileUrl (for backward compatibility with old files)
     if (!pdfBuffer && handbook.fileUrl) {
       if (handbook.fileUrl.startsWith('data:')) {
         const base64Data = handbook.fileUrl.split(',')[1];
         pdfBuffer = Buffer.from(base64Data, 'base64');
       } else if (handbook.fileUrl.startsWith('http')) {
-        pdfBuffer = await fetchPdfBufferFromUrl(handbook.fileUrl);
+        try {
+          pdfBuffer = await fetchPdfBufferFromUrl(handbook.fileUrl);
+        } catch (error) {
+          console.warn(`Failed to download handbook ${handbookId} from fileUrl:`, error.message);
+        }
       } else {
         pdfBuffer = readPDFFromFile(handbook.fileUrl);
       }
@@ -562,54 +568,80 @@ export const streamHandbookSectionFile = async (req, res, next) => {
       return res.status(403).json({ message: 'Section is not available' });
     }
 
+    // If we have a Cloudinary URL, redirect directly to it (more efficient and avoids auth issues)
+    if (section.cloudinaryUrl && section.cloudinaryUrl.startsWith('http')) {
+      const cleanUrl = section.cloudinaryUrl.split('?')[0]; // Remove query params
+      logPublicApi(req, res, endpoint, 302, 'Redirecting to Cloudinary', { sectionId, url: cleanUrl });
+      return res.redirect(302, cleanUrl);
+    }
+
     let pdfBuffer = null;
     const ownerId = section.updatedBy?.toString() || section.createdBy?.toString();
     const fallbackFileName = section.title ? `${section.title}.pdf` : 'handbook-section.pdf';
 
-    if (section.googleDriveFileId) {
-      // Try using OAuth download first if ownerId is available
-      if (ownerId) {
+    // Try Cloudinary URL first (most reliable - it's the full URL)
+    // Remove query parameters that might cause issues
+    if (section.cloudinaryUrl && section.cloudinaryUrl.startsWith('http')) {
+      try {
+        // Remove query parameters from URL (like ?_a=BAMAMieC0) as they might be expired
+        const cleanUrl = section.cloudinaryUrl.split('?')[0];
+        pdfBuffer = await fetchPdfBufferFromUrl(cleanUrl);
+      } catch (error) {
+        // If cleaned URL fails, try original URL
         try {
-          pdfBuffer = await downloadFileFromDrive(section.googleDriveFileId, ownerId);
-        } catch (error) {
-          console.warn(`Failed to download section ${sectionId} from Drive using OAuth:`, error.message);
-          // Fall through to public download
-        }
-      }
-      
-      // If OAuth download failed or no ownerId, try public download
-      if (!pdfBuffer) {
-        const downloadUrls = [
-          `https://drive.google.com/uc?export=download&id=${section.googleDriveFileId}`,
-          `https://drive.google.com/uc?export=view&id=${section.googleDriveFileId}`
-        ];
-        
-        for (const downloadUrl of downloadUrls) {
+          pdfBuffer = await fetchPdfBufferFromUrl(section.cloudinaryUrl);
+        } catch (error2) {
+          // Try without version number (remove /v\d+/ from URL)
           try {
-            pdfBuffer = await fetchPdfBufferFromUrl(downloadUrl);
-            break; // Success, exit loop
-          } catch (error) {
-            console.warn(`Failed to download from ${downloadUrl}:`, error.message);
-            // Continue to next URL
+            const urlWithoutVersion = section.cloudinaryUrl.replace(/\/v\d+\//, '/');
+            pdfBuffer = await fetchPdfBufferFromUrl(urlWithoutVersion);
+          } catch (error3) {
+            // All attempts failed, continue to next fallback
           }
         }
       }
     }
+    
+    // Fallback to publicId if cloudinaryUrl didn't work
+    if (!pdfBuffer && section.cloudinaryPublicId) {
+      try {
+        pdfBuffer = await downloadFileFromCloudinary(section.cloudinaryPublicId);
+      } catch (error) {
+        // Continue to next fallback
+      }
+    }
 
+    // Final fallback to fileUrl (for backward compatibility with old files)
     if (!pdfBuffer && section.fileUrl) {
       if (section.fileUrl.startsWith('data:')) {
-        const base64Data = section.fileUrl.split(',')[1];
-        pdfBuffer = Buffer.from(base64Data, 'base64');
+        try {
+          const base64Data = section.fileUrl.split(',')[1];
+          pdfBuffer = Buffer.from(base64Data, 'base64');
+        } catch (error) {
+          // Continue to next fallback
+        }
       } else if (section.fileUrl.startsWith('http')) {
-        pdfBuffer = await fetchPdfBufferFromUrl(section.fileUrl);
+        try {
+          pdfBuffer = await fetchPdfBufferFromUrl(section.fileUrl);
+        } catch (error) {
+          // Continue to next fallback
+        }
       } else {
-        pdfBuffer = readPDFFromFile(section.fileUrl);
+        try {
+          pdfBuffer = readPDFFromFile(section.fileUrl);
+        } catch (error) {
+          // Continue to next fallback
+        }
       }
     }
 
     if (!pdfBuffer) {
-      logPublicApi(req, res, endpoint, 404, 'Section PDF not available', { sectionId });
-      return res.status(404).json({ message: 'Section PDF not available' });
+      logPublicApi(req, res, endpoint, 404, 'Section PDF not available - file may need to be re-uploaded', { sectionId });
+      return res.status(404).json({ 
+        message: 'Section PDF not available. The file may need to be re-uploaded to Cloudinary.',
+        sectionId,
+        details: 'File not found in any storage location. Please contact an administrator to re-upload this section.'
+      });
     }
 
     logPublicApi(req, res, endpoint, 200, 'Streaming handbook section file', { sectionId, fileName: fallbackFileName });

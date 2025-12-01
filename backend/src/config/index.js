@@ -27,6 +27,11 @@ export const config = {
     adminApiKey: process.env.ALGOLIA_ADMIN_API_KEY,
     searchApiKey: process.env.ALGOLIA_SEARCH_API_KEY,
     indexName: process.env.ALGOLIA_INDEX_NAME || 'buksu_content'
+  },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    apiKey: process.env.CLOUDINARY_API_KEY,
+    apiSecret: process.env.CLOUDINARY_API_SECRET
   }
 };
 

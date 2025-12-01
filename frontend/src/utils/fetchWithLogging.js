@@ -19,7 +19,6 @@ export const logApiResponse = (response) => {
       if (logData.endpoint && (
         logData.endpoint.includes('/president/handbook') || 
         logData.endpoint.includes('/president/handbook-sections') ||
-        logData.endpoint.includes('/president/drive/status') ||
         logData.endpoint.includes('/admin/handbook')
       )) {
         return;
@@ -46,7 +45,6 @@ export const installGlobalApiLogger = () => {
     if (typeof url === 'string' && (
       url.includes('/president/handbook') ||
       url.includes('/president/handbook-sections') ||
-      url.includes('/president/drive/status') ||
       url.includes('/admin/handbook')
     )) {
       return response;

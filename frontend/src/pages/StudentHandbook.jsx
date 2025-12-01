@@ -8,7 +8,6 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?url'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'
-const DRIVE_PREVIEW_BASE = 'https://drive.google.com/file/d'
 
 GlobalWorkerOptions.workerSrc = pdfjsWorker
 
@@ -69,18 +68,16 @@ const StudentHandbook = () => {
 
   const resolveViewerUrl = useCallback((handbook) => {
     if (!handbook) return ''
-    if (handbook.googleDriveFileId) {
-      return `${DRIVE_PREVIEW_BASE}/${handbook.googleDriveFileId}/preview`
+    // Use Cloudinary URL if available
+    if (handbook.cloudinaryUrl) {
+      return handbook.cloudinaryUrl
     }
-    if (handbook.googleDrivePreviewUrl) {
-      return handbook.googleDrivePreviewUrl
-    }
+    // Fallback to fileUrl (for backward compatibility)
     if (handbook.fileUrl) {
-      let absoluteUrl = handbook.fileUrl
-      if (!handbook.fileUrl.startsWith('http') && !handbook.fileUrl.startsWith('https')) {
-        absoluteUrl = `http://localhost:5001/${handbook.fileUrl}`
+      if (handbook.fileUrl.startsWith('http') || handbook.fileUrl.startsWith('https')) {
+        return handbook.fileUrl
       }
-      return `https://drive.google.com/viewerng/viewer?embedded=true&url=${encodeURIComponent(absoluteUrl)}`
+      return `http://localhost:5001/${handbook.fileUrl}`
     }
     return ''
   }, [])
@@ -101,12 +98,14 @@ const StudentHandbook = () => {
 
   const resolveSectionViewerUrl = useCallback((section) => {
     if (!section) return ''
-    if (section.googleDrivePreviewUrl) {
-      return section.googleDrivePreviewUrl
+    // Use Cloudinary URL if available
+    if (section.cloudinaryUrl) {
+      return section.cloudinaryUrl
     }
+    // Fallback to fileUrl
     const fileUrl = resolveSectionFileUrl(section)
     if (!fileUrl) return ''
-    return `https://drive.google.com/viewerng/viewer?embedded=true&url=${encodeURIComponent(fileUrl)}`
+    return fileUrl
   }, [resolveSectionFileUrl])
 
   // Get the current handbook (should be only one)

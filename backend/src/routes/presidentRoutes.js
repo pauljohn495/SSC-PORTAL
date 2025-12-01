@@ -18,9 +18,6 @@ import {
   updateMemorandum,
   setMemorandumPriority,
   clearMemorandumPriority,
-  getDriveAuthUrl,
-  driveOAuthCallback,
-  getDriveConnectionStatus
 } from '../controllers/presidentController.js';
 import { getActivityLogs } from '../controllers/adminController.js';
 import {
@@ -29,7 +26,9 @@ import {
   updatePolicyDepartment,
   createPolicySection,
   updatePolicySection,
-  deletePolicySection
+  deletePolicySection,
+  setPolicySectionPriority,
+  clearPolicySectionPriority
 } from '../controllers/policyController.js';
 
 const router = express.Router();
@@ -44,11 +43,6 @@ router.put('/calendar/events/:eventId/archive', archiveEvent);
 router.get('/calendar/events/archived', getArchivedEvents);
 router.put('/calendar/events/:eventId/restore', restoreEvent);
 router.delete('/calendar/events/:eventId', deleteEvent);
-
-// Google Drive OAuth routes
-router.get('/drive/auth-url', getDriveAuthUrl);
-router.get('/drive/oauth/callback', driveOAuthCallback);
-router.get('/drive/status', getDriveConnectionStatus);
 
 // Handbook routes
 router.post('/handbook', createHandbook);
@@ -82,6 +76,8 @@ router.post('/policies/departments', createPolicyDepartment);
 router.put('/policies/departments/:id', updatePolicyDepartment);
 router.post('/policies/sections', createPolicySection);
 router.put('/policies/sections/:id', updatePolicySection);
+router.post('/policies/sections/:id/priority', setPolicySectionPriority);
+router.post('/policies/sections/:id/clear-priority', clearPolicySectionPriority);
 router.delete('/policies/sections/:id', deletePolicySection);
 
 export default router;
