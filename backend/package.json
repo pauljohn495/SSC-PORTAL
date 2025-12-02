@@ -15,6 +15,7 @@
     "adm-zip": "^0.5.16",
     "algoliasearch": "^5.43.0",
     "archiver": "^7.0.1",
+    "bcryptjs": "^3.0.3",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
